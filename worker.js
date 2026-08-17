@@ -227,51 +227,93 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     this.broadcastState(true);
   }
   serverAttack(p,m){
-    const now=Date.now();if(now-p.lastAttack<300)return;p.lastAttack=now;
-    const weapon=m.weapon==='bow'?'bow':'sword';p.weapon=weapon;
-    const angle=Number.isFinite(Number(m.angle))?Number(m.angle):p.angle;p.angle=angle;
-    // Client prediction can be a few frames ahead of the authoritative player.
-    // Use the reported attack origin when it is close enough to the server position,
-    // so a visually correct swing is not rejected by a tiny prediction offset.
-    let attackX=p.x,attackY=p.y;
-    // Never trust a client-side attack position for melee collision; the
-    // authoritative player position is the single source of truth.
+    const now=Date.now();
+    if(now-p.lastAttack<300)return;
+    p.lastAttack=now;
+
+    const weapon=m.weapon==='bow'?'bow':'sword';
+    p.weapon=weapon;
+    const angle=Number.isFinite(Number(m.angle))?Number(m.angle):p.angle;
+    p.angle=angle;
+
+    // For ranged attacks the server remains fully authoritative.
     if(weapon==='bow'){
       const projectile={
-        id:'a'+(++this.attackSeq),owner:p.id,x:attackX+Math.cos(angle)*43,y:attackY+Math.sin(angle)*43,
-        vx:Math.cos(angle)*8.5,vy:Math.sin(angle)*8.5,angle,life:1.8,damage:clamp(Number(m.stats?.atk)||p.atk,1,10000),
+        id:'a'+(++this.attackSeq),owner:p.id,
+        x:p.x+Math.cos(angle)*43,y:p.y+Math.sin(angle)*43,
+        vx:Math.cos(angle)*8.5,vy:Math.sin(angle)*8.5,angle,life:1.8,
+        damage:clamp(Number(m.stats?.atk)||p.atk,1,10000),
         crit:Math.random()<p.crit,hit:false,radius:8
       };
       this.projectiles.push(projectile);
       this.broadcast({type:'fx',kind:'projectile',projectile:{id:projectile.id,owner:p.id,x:projectile.x,y:projectile.y,vx:projectile.vx,vy:projectile.vy,angle,weapon:'bow'},serverNow:now});
       return;
     }
-    // EXACT SOLO SWORD HIT TEST. Keep multiplayer melee geometry identical to Solo:
-    // a 105px radial reach with a 1.0 radian front cone, evaluated against
-    // every enemy body. Do not use a center-only capsule or pick only one target.
-    // The authoritative player position is the sole melee origin.
-    let hitIds=[];
-    const csAtk=clamp(Number(m.stats?.atk)||p.atk,1,10000);
-    for(const e of this.enemies){
-      if(!e || e.hp<=0) continue;
-      const dx=e.x-p.x,dy=e.y-p.y;
-      const dd=Math.hypot(dx,dy);
-      let da=Math.atan2(dy,dx)-angle;
-      da=Math.atan2(Math.sin(da),Math.cos(da));
-      // Same values as Solo's original slash(): dd < 105 && abs(da) < 1.0.
-      // Keep the exact Solo reach/cone; no extra melee range is added.
-      if(dd < 105 && Math.abs(da) < 1.0){
-        let dmg=csAtk;
-        if(e.shieldT>0)dmg*=.35;
-        if(Math.random()<p.crit)dmg*=2;
-        e.hp-=dmg;
-        e.hit=.14;
-        hitIds.push({id:e.id,damage:dmg});
-        if(e.hp<=0)this.killEnemy(e,p.id);
+
+    // IMPORTANT: keep the v14 enemy->player melee system untouched.
+    // Only the player's sword hit detection is changed below.
+    // Reconcile the visual/client attack position with the authoritative
+    // server position. Client rendering can be a few frames ahead because
+    // remote enemy/player sprites are interpolated locally. We accept the
+    // reported origin only inside a small, movement-sized envelope; this is
+    // not an unrestricted client position and cannot be used to attack from
+    // across the arena.
+    let attackX=p.x, attackY=p.y;
+    const reportedX=Number(m.x), reportedY=Number(m.y);
+    if(Number.isFinite(reportedX)&&Number.isFinite(reportedY)){
+      const ox=reportedX-p.x, oy=reportedY-p.y;
+      const offset=Math.hypot(ox,oy);
+      const maxReconcile=70;
+      if(offset<=maxReconcile){
+        attackX=reportedX;
+        attackY=reportedY;
+      }else if(offset>0){
+        attackX=p.x+ox/offset*maxReconcile;
+        attackY=p.y+oy/offset*maxReconcile;
       }
     }
-    const firstHit=hitIds[0];
-    this.broadcast({type:'fx',kind:'attack',attackId:++this.attackSeq,from:p.id,x:attackX,y:attackY,angle,weapon:'sword',hit:hitIds.length>0,hitX:firstHit?this.enemies.find(e=>e.id===firstHit.id)?.x:attackX+Math.cos(angle)*70,hitY:firstHit?this.enemies.find(e=>e.id===firstHit.id)?.y:attackY+Math.sin(angle)*70,hitIds,serverNow:now});
+
+    // This is the same sword collision geometry used by Solo's working
+    // slash(): 92px reach, 13px blade radius, and the enemy's own body radius.
+    // The blade is a finite segment, so a hit requires the actual body to
+    // touch the visible slash rather than merely being somewhere in front of
+    // the player.
+    const reach=92;
+    const bladeRadius=13;
+    const ca=Math.cos(angle), sa=Math.sin(angle);
+    const hitIds=[];
+
+    for(const e of this.enemies){
+      if(!e||e.hp<=0)continue;
+      const er=Math.max(10,Number(e.r)||20);
+      const vx=e.x-attackX, vy=e.y-attackY;
+      const t=clamp((vx*ca+vy*sa)/reach,0,1);
+      const cx=attackX+ca*reach*t;
+      const cy=attackY+sa*reach*t;
+      const dx=e.x-cx, dy=e.y-cy;
+      if(dx*dx+dy*dy <= (bladeRadius+er)*(bladeRadius+er)){
+        let dmg=clamp(Number(m.stats?.atk)||p.atk,1,10000);
+        if(e.shieldT>0)dmg*=.35;
+        if(Math.random()<p.crit)dmg*=2;
+        e.hp=Math.max(0,e.hp-dmg);
+        e.hit=.14;
+        hitIds.push({id:e.id,damage:dmg});
+      }
+    }
+
+    for(const h of hitIds){
+      const e=this.enemies.find(q=>q.id===h.id);
+      if(e&&e.hp<=0)this.killEnemy(e,p.id);
+    }
+
+    this.broadcast({
+      type:'fx',kind:'attack',attackId:++this.attackSeq,
+      from:p.id,x:p.x,y:p.y,angle,weapon:'sword',
+      hit:hitIds.length>0,
+      hitIds,
+      serverNow:now
+    });
+    this.broadcastState(true);
   }
   tick(now){
     const raw=Math.max(0,Math.min(250,now-this.lastTick));this.lastTick=now;
