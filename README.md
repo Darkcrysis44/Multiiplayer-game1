@@ -1,8 +1,5 @@
-# Love Sword Arena v26 — Solo Combat Reference
+# Love Sword Arena — Multiplayer Lag Compensation v27
 
-Multiplayer weapon combat now uses the Solo arena combat implementation as its single reference:
-- Sword: 270ms cooldown, 125px reach, 0.95 rad facing cone, Solo slash animation.
-- Bow: 420ms cooldown, 7.2 projectile speed, 2.4s life, arrow origin at the Solo bow/string center (24px forward).
-- Multiplayer damage remains server authoritative.
-- Local and remote sword slash visuals use the same Solo arc timing.
-- Local and remote bow visuals use the same Solo bow/string geometry.
+This build keeps the Solo-feel local sword animation and adds server-side lag compensation for multiplayer attacks. Sword hit validation uses a short server history (up to 650ms) and includes enemy body radius, so ~300–400ms RTT is much less likely to make a visually connected sword hit miss.
+
+Bow origin remains aligned to the bow/string and is also timestamped for the same authoritative timing model.

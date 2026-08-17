@@ -1399,7 +1399,7 @@ slash=function(angle){
       const ox=arena.player.x+Math.cos(angle)*24, oy=arena.player.y+Math.sin(angle)*24;
       arena.projectiles.push({id:'local-'+(++coopLocalAttackAt),x:ox,y:oy,targetX:ox,targetY:oy,vx:Math.cos(angle)*7.2,vy:Math.sin(angle)*7.2,life:2.4,damage:0,angle,owner:'coopArrow',kind:'playerArrow'});
       sfx('slash');
-      coopSend({type:'attack',angle,weapon,x:arena.player.x,y:arena.player.y,stats:coopStats(),arrowType:arenaState.gear.arrow,arrowMult:arrowMultMap[arenaState.gear.arrow]||1});
+      coopSend({type:'attack',angle,weapon,x:arena.player.x,y:arena.player.y,clientServerTime:Date.now()+coopClockOffset,stats:coopStats(),arrowType:arenaState.gear.arrow,arrowMult:arrowMultMap[arenaState.gear.arrow]||1});
       return;
     }
     arena.player.attackCd=.27;
@@ -1409,7 +1409,7 @@ slash=function(angle){
     arena.slashes.push({x:arena.player.x,y:arena.player.y,angle,t:.22,maxT:.22,remote:false});
     burst(arena.player.x+Math.cos(angle)*35,arena.player.y+Math.sin(angle)*35,7,'slash');
     sfx('slash');
-    coopSend({type:'attack',angle,weapon,x:arena.player.x,y:arena.player.y,stats:coopStats()});
+    coopSend({type:'attack',angle,weapon,x:arena.player.x,y:arena.player.y,clientServerTime:Date.now()+coopClockOffset,stats:coopStats()});
     return;
   }
   arena.player.attackAngle=angle;

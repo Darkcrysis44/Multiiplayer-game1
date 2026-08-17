@@ -50,7 +50,7 @@ export class Room {
   constructor(state) {
     this.state=state; this.sockets=new Map(); this.players=new Map();
     this.phase='lobby'; this.wave=1; this.enemies=[]; this.spawned=0; this.nextEnemy=1;
-    this.lastTick=Date.now(); this.lastState=0; this.stateSeq=0; this.nextTickAlarm=null; this.countdownAt=0;
+    this.lastTick=Date.now(); this.lastState=0; this.stateSeq=0; this.nextTickAlarm=null; this.countdownAt=0; this.history=[];
     this.offer=null; this.picks=new Map(); this.attackSeq=0; this.projectiles=[];
   }
   async fetch(request) {
@@ -67,7 +67,20 @@ export class Room {
     server.addEventListener('message',onMessage); server.addEventListener('close',cleanup); server.addEventListener('error',cleanup);
     return new Response(null,{status:101,webSocket:client});
   }
-  resetRoom(){this.phase='lobby';this.wave=1;this.enemies=[];this.projectiles=[];this.spawned=0;this.offer=null;this.picks.clear();this.countdownAt=0;}
+  resetRoom(){this.phase='lobby';this.wave=1;this.enemies=[];this.projectiles=[];this.spawned=0;this.offer=null;this.picks.clear();this.countdownAt=0;this.history=[];}
+  recordCombatHistory(now){
+    const players=[...this.players.values()].map(p=>({id:p.id,x:p.x,y:p.y}));
+    const enemies=this.enemies.map(e=>({id:e.id,x:e.x,y:e.y,r:e.r,hp:e.hp}));
+    this.history.push({t:now,players,enemies});
+    const cutoff=now-750;
+    while(this.history.length&&this.history[0].t<cutoff)this.history.shift();
+  }
+  historyAt(t){
+    if(!this.history.length)return null;
+    let best=this.history[0],bd=Math.abs(best.t-t);
+    for(const h of this.history){const d=Math.abs(h.t-t);if(d<bd){best=h;bd=d;}}
+    return best;
+  }
   async ensureAlarm(){if(this.nextTickAlarm)return;this.nextTickAlarm=Date.now()+TICK_MS;try{await this.state.storage.setAlarm(this.nextTickAlarm)}catch{this.nextTickAlarm=null}}
   async alarm(){this.nextTickAlarm=null;const now=Date.now();this.tick(now);if(this.sockets.size)await this.ensureAlarm()}
   message(id,m){const p=this.players.get(id);if(!p)return;
@@ -236,8 +249,19 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     const angle=Number.isFinite(Number(m.angle))?Number(m.angle):p.angle;
     p.angle=angle;
     const stats=clamp(Number(m.stats?.atk)||p.atk,1,10000);
+    // Lag compensation: the client timestamps the attack using the server
+    // clock estimate. At ~360ms RTT, the packet can arrive ~180ms late.
+    // We validate the attack against a short server-side history so the hit
+    // is judged where the attacker actually saw the target, while damage
+    // remains fully server-authoritative.
+    const claimedTime=Number(m.clientServerTime);
+    const attackTime=Number.isFinite(claimedTime)?clamp(claimedTime,now-650,now+40):now;
+    const past=this.historyAt(attackTime)||{players:[],enemies:[]};
+    const pastPlayer=past.players.find(q=>q.id===p.id)||{x:p.x,y:p.y};
+    const attackX=Number.isFinite(Number(m.x))?Number(m.x):pastPlayer.x;
+    const attackY=Number.isFinite(Number(m.y))?Number(m.y):pastPlayer.y;
 
-    // Combat reference is the Solo arena implementation.  Multiplayer only
+    // Combat reference is the Solo arena implementation. Multiplayer uses
     // moves the authoritative result to the server; it does not invent a
     // second weapon geometry.
     if(weapon==='bow'){
@@ -245,7 +269,7 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       const origin=24; // center of the Solo bow/string line
       const projectile={
         id:'a'+(++this.attackSeq),owner:p.id,
-        x:p.x+Math.cos(angle)*origin,y:p.y+Math.sin(angle)*origin,
+        x:attackX+Math.cos(angle)*origin,y:attackY+Math.sin(angle)*origin,
         vx:Math.cos(angle)*7.2,vy:Math.sin(angle)*7.2,
         angle,life:2.4,
         damage:clamp(stats*1.15*arrowMult,1,10000),
@@ -259,8 +283,12 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     // Exact Solo sword rule: 125px reach and 0.95 rad facing cone.
     const hits=[];
     for(const e of [...this.enemies]){
-      const dx=e.x-p.x,dy=e.y-p.y,dist=Math.hypot(dx,dy);
-      if(dist<125){
+      const pe=past.enemies.find(q=>q.id===e.id);
+      const ex=pe?pe.x:e.x, ey=pe?pe.y:e.y;
+      const dx=ex-attackX,dy=ey-attackY,dist=Math.hypot(dx,dy);
+      // Include the enemy body radius so a sword touching the edge counts.
+      const reach=125+(Number(pe?.r)||Number(e.r)||20);
+      if(dist<reach){
         let da=Math.atan2(dy,dx)-angle;
         da=Math.atan2(Math.sin(da),Math.cos(da));
         if(Math.abs(da)<.95){
@@ -276,7 +304,7 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       const e=this.enemies.find(q=>q.id===h.id);
       if(e&&e.hp<=0)this.killEnemy(e,p.id);
     }
-    this.broadcast({type:'fx',kind:'attack',attackId:++this.attackSeq,from:p.id,x:p.x,y:p.y,angle,weapon:'sword',hit:hits.length>0,hitIds:hits,serverNow:now});
+    this.broadcast({type:'fx',kind:'attack',attackId:++this.attackSeq,from:p.id,x:attackX,y:attackY,angle,weapon:'sword',hit:hits.length>0,hitIds:hits,serverNow:now,attackServerTime:attackTime,lagCompensated:attackTime!==now});
     this.broadcastState(true);
   }
 
@@ -437,6 +465,7 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     const targetCount=this.wave%5===0?1:this.wave*3+4;
     if(this.spawned<targetCount&&this.enemies.length<Math.min(6+this.wave,15))this.spawn();
     if(this.spawned>=targetCount&&this.enemies.length===0){this.phase='upgrade';this.offer={id:String(Date.now())+Math.random(),choices:[...UPGRADE_CHOICES].sort(()=>Math.random()-.5).slice(0,3)};this.picks.clear();this.broadcast({type:'upgradeOffer',offerId:this.offer.id,choices:this.offer.choices,serverNow:now});return;}
+    this.recordCombatHistory(now);
     if(now-this.lastState>=STATE_MS)this.broadcastState(false)
   }
   snapshotFor(id){const p=this.players.get(id);return this.makeState(p)}
