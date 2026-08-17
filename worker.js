@@ -249,7 +249,9 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     // Server-authoritative sword capsule. It checks the entire enemy body,
     // not only its center, so edge contacts are reliable and deterministic.
     let best=null,bestDist=Infinity;
-    const maxRange=132, bladeRadius=27, ca=Math.cos(angle), sa=Math.sin(angle);
+    // Collision must match the visible slash: only the blade body can hit,
+    // never an invisible long-range circle/cone.
+    const maxRange=92, bladeRadius=13, ca=Math.cos(angle), sa=Math.sin(angle);
     const endX=attackX+ca*maxRange, endY=attackY+sa*maxRange;
     for(const e of this.enemies){
       const er=Math.max(10,e.r||20);
@@ -403,9 +405,15 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       if(!e.dashT&&!e.chargeT&&d>contact){
         e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt;
         e.touchingTarget=null;
+        e.meleeHitCd=0;
       }else if(!e.dashT&&!e.chargeT){
-        if(e.touchingTarget!==target.id){
-          e.touchingTarget=target.id;
+        // Once a melee enemy overlaps the player's body, keep attacking while
+        // overlapped. The old touchingTarget flag only allowed one hit and then
+        // stopped forever until the enemy separated.
+        e.touchingTarget=target.id;
+        e.meleeHitCd=Math.max(0,(e.meleeHitCd||0)-dt);
+        if(e.meleeHitCd<=0){
+          e.meleeHitCd=.24;
           const a=Math.atan2(target.y-e.y,target.x-e.x);
           const dmg=Math.max(1,e.atk-target.armor*.7);
           this.broadcast({type:'enemyAttackFx',enemyId:e.id,targetId:target.id,x:nx,y:ny,angle:a,damage:dmg,serverNow:now});
@@ -414,6 +422,7 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
         }
       }else{
         e.touchingTarget=null;
+        e.meleeHitCd=0;
       }
       e.x=clamp(e.x,-60,WIDTH+60);e.y=clamp(e.y,-60,HEIGHT+60);e.hit=Math.max(0,e.hit-dt);
     }

@@ -885,7 +885,9 @@ function damageEnemy(e,dmg){if(e.shieldT>0)dmg*=.35;e.hp-=dmg;e.hit=.12;arena.sh
 function slash(angle){if(!arena.running||arena.player.attackCd>0)return;initArenaAudio();if(arenaState.activeWeaponType==='bow'){arena.player.attackCd=.42;arena.player.angle=angle;const cs=combatStats();arena.projectiles.push({x:arena.player.x,y:arena.player.y,vx:Math.cos(angle)*7.2,vy:Math.sin(angle)*7.2,life:2.4,damage:cs.atk*1.15*({"Light Arrow":1.1,"Fire Arrow":1.15,"Ice Arrow":1.1,"Piercing Arrow":1.2,"Poison Arrow":1.2,"Explosive Arrow":1.3,"Chain Arrow":1.25,"Moon Arrow":1.7,"Cupid Arrow":2,"Eternal Rose Arrow":2.4}[arenaState.gear.arrow]||1),angle,owner:'playerSkill',kind:'playerArrow',arrowType:arenaState.gear.arrow});burst(arena.player.x,arena.player.y,7,'arrow');sfx('bow');return}arena.player.attackCd=.27;arena.player.slashT=.22;arena.player.angle=angle;arena.player.dir=Math.cos(angle)>=0?1:-1;const p=arena.player;let hits=0;for(const q of [...arena.projectiles]){const dd=Math.hypot(q.x-p.x,q.y-p.y);let da=Math.atan2(q.y-p.y,q.x-p.x)-angle;da=Math.atan2(Math.sin(da),Math.cos(da));if(dd<105&&Math.abs(da)<1.0)destroyProjectile(q)}for(const e of [...arena.enemies]){
     // Same finite blade capsule used by multiplayer/server.
     const cs=combatStats(), ca=Math.cos(angle),sa=Math.sin(angle);
-    const reach=132,bladeRadius=27;
+    // Match the authoritative multiplayer sword collision: no invisible
+    // long-range hitbox; the enemy body must actually touch the blade.
+    const reach=92,bladeRadius=13;
     const vx=e.x-p.x,vy=e.y-p.y;
     const t=Math.max(0,Math.min(1,(vx*ca+vy*sa)/reach));
     const cx=p.x+ca*reach*t,cy=p.y+sa*reach*t;
