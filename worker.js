@@ -3,8 +3,6 @@ const COOP_SPEED_MULT = 1.22;
 const TICK_MS = 16;       // 60 Hz authoritative simulation; client predicts locally at 60 FPS
 const STATE_MS = 16;      // 60 Hz snapshots for tighter multiplayer reconciliation
 const WIDTH = 1200, HEIGHT = 700;
-const PLAYER_HIT_RADIUS = 22;
-const MELEE_TYPES = new Set(['broken','charger','duelist','lancer','tank','splitter','guard','assassin','brute','berserker','lovebreaker']);
 const TYPES = {
   broken:[.55,1,1,21,'Broken Heart','Common'], charger:[.10,.8,1.8,19,'Heart Charger','Uncommon'],
   duelist:[.06,1.15,1.2,22,'Heart Duelist','Uncommon'], archer:[.06,.9,.72,20,'Cupid Archer','Uncommon'],
@@ -61,7 +59,7 @@ export class Room {
     const pair=new WebSocketPair(), client=pair[0], server=pair[1]; server.accept();
     const id=crypto.randomUUID();
     this.sockets.set(id,server);
-    this.players.set(id,{id,name:'Player',x:WIDTH/2,y:HEIGHT/2,hp:100,maxHp:100,atk:14,spd:3.2,armor:0,crit:.08,ix:0,iy:0,angle:0,weapon:'sword',lastAttack:0,skillCd:0,skill:'',downed:false,reviveProgress:0,level:1,rebirths:0,mult:1,passives:[],contactInv:0});
+    this.players.set(id,{id,name:'Player',x:WIDTH/2,y:HEIGHT/2,hp:100,maxHp:100,atk:14,spd:3.2,armor:0,crit:.08,ix:0,iy:0,angle:0,weapon:'sword',lastAttack:0,skillCd:0,skill:'',downed:false,reviveProgress:0,level:1,rebirths:0,mult:1,passives:[]});
     this.send(id,{type:'welcome',id,serverNow:Date.now(),phase:this.phase,wave:this.wave,state:this.snapshotFor(id),serverAuthoritative:true});
     this.broadcastPlayers(); this.ensureAlarm();
     const onMessage=e=>{try{this.message(id,JSON.parse(e.data))}catch{}};
@@ -133,7 +131,7 @@ export class Room {
       hp*=bossDef.hp;spd*=bossDef.spd;atk*=bossDef.atk;r=44;
     }else{const t=TYPES[type]||TYPES.broken;hp*=t[1];spd*=t[2];r=t[3];if(type==='charger')atk*=1.15;if(type==='tank')atk*=1.35;if(type==='duelist')atk*=1.65;if(type==='assassin')atk*=2;if(type==='brute')atk*=1.7;if(type==='lovebreaker')atk*=3;if(type==='berserker')atk*=2.35;if(type==='lancer')atk*=1.9;if(type==='witch')atk*=1.45}
     this.enemies.push({id:'e'+this.nextEnemy++,x,y,hp,maxHp:hp,r,speed:spd,atk,hit:0,attack:.7+Math.random(),type,boss:type==='boss',bossIndex:type==='boss'?Math.floor(this.wave/5)-1:-1,bossDef:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length]:null,
-attackT:0,attackAngle:0,
+attackT:0,attackAngle:0,touchingTarget:null,
 name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:(TYPES[type]?.[4]||'Broken Heart'),rarity:type==='boss'?'Legendary':(TYPES[type]?.[5]||'Common')});this.spawned++;
   }
   xpNeed(level){return Math.floor(100*Math.pow(1.12,Math.max(0,level-1)))}
@@ -270,7 +268,7 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     if(this.phase==='countdown' && now>=this.countdownAt){this.phase='battle';this.broadcast({type:'phase',phase:'battle',wave:this.wave,serverNow:now});}
     if(this.phase!=='battle')return;
     const dt=raw/1000;
-    for(const p of this.players.values()){p.skillCd=Math.max(0,(p.skillCd||0)-raw/1000);p.contactInv=Math.max(0,(p.contactInv||0)-raw/1000);
+    for(const p of this.players.values()){p.skillCd=Math.max(0,(p.skillCd||0)-raw/1000);
       if(p.downed){p.ix=0;p.iy=0;continue}
       const l=Math.hypot(p.ix,p.iy)||1;p.x=clamp(p.x+p.ix/l*p.spd*COOP_SPEED_MULT*60*dt,30,WIDTH-30);p.y=clamp(p.y+p.iy/l*p.spd*COOP_SPEED_MULT*60*dt,62,HEIGHT-30);
     }
@@ -382,32 +380,27 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       let target=null,bd=Infinity;for(const p of this.players.values()){if(p.downed)continue;const d=dist(e,p);if(d<bd){bd=d;target=p}}
       if(!target)continue;
       const dx=target.x-e.x,dy=target.y-e.y,d=Math.hypot(dx,dy)||1;
-      // A melee enemy should physically reach the player's whole body, not an
-      // arbitrary point in front of the player. Treat both circles as hitboxes.
-      const contact=(e.r||21)+PLAYER_HIT_RADIUS;
+      // The player is a full-body hitbox. Melee enemies stop only when their
+      // own radius touches that hitbox, not when they reach the player's center.
+      const playerHitRadius=34;
+      const contact=e.boss?(e.r||34)+playerHitRadius:(e.r||20)+playerHitRadius;
       if(!e.dashT&&!e.chargeT&&d>contact){
         e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt;
-      }else if(MELEE_TYPES.has(e.type)||e.boss){
-        // No attack wind-up at contact: the hit happens on the first frame the
-        // enemy touches the player's hitbox. contactInv only prevents 60Hz
-        // frame-by-frame damage while still allowing immediate re-hits.
-        if(d<=contact && target.contactInv<=0){
-          target.contactInv=.38;
+        e.touchingTarget=null;
+      }else if(!e.dashT&&!e.chargeT){
+        // No attack wind-up/cooldown: the first frame of body contact deals damage.
+        // Staying inside the same contact does not machine-gun damage every tick;
+        // separating and touching again immediately creates the next hit.
+        if(e.touchingTarget!==target.id){
+          e.touchingTarget=target.id;
           const a=Math.atan2(target.y-e.y,target.x-e.x);
           const dmg=Math.max(1,e.atk-target.armor*.7);
           this.broadcast({type:'enemyAttackFx',enemyId:e.id,targetId:target.id,x:target.x,y:target.y,angle:a,damage:dmg,serverNow:now});
           target.hp=Math.max(0,target.hp-dmg);
           if(target.hp<=0){target.hp=0;target.downed=true;target.reviveProgress=0;target.ix=0;target.iy=0;this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y})}
         }
-      }else{
-        e.attack-=dt;
-        if(e.attack<=0){
-          e.attack=.9;
-          const a=Math.atan2(target.y-e.y,target.x-e.x),dmg=Math.max(1,e.atk-target.armor*.7);
-          this.broadcast({type:'enemyAttackFx',enemyId:e.id,targetId:target.id,x:target.x,y:target.y,angle:a,damage:dmg,serverNow:now});
-          target.hp=Math.max(0,target.hp-dmg);
-          if(target.hp<=0){target.hp=0;target.downed=true;target.reviveProgress=0;target.ix=0;target.iy=0;this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y})}
-        }
+      } else {
+        e.touchingTarget=null;
       }
       e.x=clamp(e.x,-60,WIDTH+60);e.y=clamp(e.y,-60,HEIGHT+60);e.hit=Math.max(0,e.hit-dt);
     }

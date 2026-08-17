@@ -874,7 +874,7 @@ function spawnEnemy(forceBoss=false){
  if(boss){bossIndex=(Math.floor(arena.wave/5)-1)%bossDefs.length;bossDef=bossDefs[bossIndex];hp*=bossDef.hp;spd*=bossDef.spd;atk*=bossDef.atk;r=44}
  const enemyMeta={broken:['Broken Heart','Common'],charger:['Heart Charger','Uncommon'],duelist:['Heart Duelist','Uncommon'],archer:['Cupid Archer','Uncommon'],lancer:['Rose Lancer','Uncommon'],tank:['Grief Tank','Rare'],mage:['Heart Mage','Rare'],splitter:['Split Heart','Rare'],sentinel:['Rose Sentinel','Rare'],guard:['Cupid Guard','Uncommon'],mimic:['Heart Mimic','Rare'],assassin:['Love Assassin','Epic'],brute:['Heart Brute','Epic'],berserker:['Love Berserker','Epic'],lovebreaker:['Love Breaker','Epic'],witch:['Heart Witch','Legendary']};
  const meta=enemyMeta[type]||['Broken Heart','Common'];
- const spawned={x,y,hp,maxHp:hp,r,speed:spd,atk,hit:0,attack:Math.random()*.7,variant:Math.random(),type,boss,bossIndex, bossDef, specialCd:2+Math.random()*2,poison:0,name:meta[0],rarity:meta[1]};arena.enemies.push(spawned);return spawned;
+ const spawned={x,y,hp,maxHp:hp,r,speed:spd,atk,hit:0,attack:Math.random()*.7,touchingTarget:false,variant:Math.random(),type,boss,bossIndex, bossDef, specialCd:2+Math.random()*2,poison:0,name:meta[0],rarity:meta[1]};arena.enemies.push(spawned);return spawned;
 }
 function burst(x,y,n=12,kind='hit'){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,sp=1+Math.random()*4;arena.particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:.45+Math.random()*.5,max:.9,size:2+Math.random()*4,kind})}}
 function fireArrow(e){const p=arena.player,dx=p.x-e.x,dy=p.y-e.y,d=Math.hypot(dx,dy)||1;arena.projectiles.push({x:e.x,y:e.y,vx:dx/d*5.2,vy:dy/d*5.2,life:2.2,damage:e.atk*.8,angle:Math.atan2(dy,dx),owner:'enemy'});burst(e.x,e.y,4,'slash');sfx('slash')}
@@ -885,7 +885,7 @@ function damageEnemy(e,dmg){if(e.shieldT>0)dmg*=.35;e.hp-=dmg;e.hit=.12;arena.sh
 function slash(angle){if(!arena.running||arena.player.attackCd>0)return;initArenaAudio();if(arenaState.activeWeaponType==='bow'){arena.player.attackCd=.42;arena.player.angle=angle;const cs=combatStats();arena.projectiles.push({x:arena.player.x,y:arena.player.y,vx:Math.cos(angle)*7.2,vy:Math.sin(angle)*7.2,life:2.4,damage:cs.atk*1.15*({"Light Arrow":1.1,"Fire Arrow":1.15,"Ice Arrow":1.1,"Piercing Arrow":1.2,"Poison Arrow":1.2,"Explosive Arrow":1.3,"Chain Arrow":1.25,"Moon Arrow":1.7,"Cupid Arrow":2,"Eternal Rose Arrow":2.4}[arenaState.gear.arrow]||1),angle,owner:'playerSkill',kind:'playerArrow',arrowType:arenaState.gear.arrow});burst(arena.player.x,arena.player.y,7,'arrow');sfx('bow');return}arena.player.attackCd=.27;arena.player.slashT=.22;arena.player.angle=angle;arena.player.dir=Math.cos(angle)>=0?1:-1;const p=arena.player;let hits=0;for(const q of [...arena.projectiles]){const dd=Math.hypot(q.x-p.x,q.y-p.y);let da=Math.atan2(q.y-p.y,q.x-p.x)-angle;da=Math.atan2(Math.sin(da),Math.cos(da));if(dd<105&&Math.abs(da)<1.0)destroyProjectile(q)}for(const e of [...arena.enemies]){const dx=e.x-p.x,dy=e.y-p.y,dist=Math.hypot(dx,dy);if(dist<125){let da=Math.atan2(dy,dx)-angle;da=Math.atan2(Math.sin(da),Math.cos(da));if(Math.abs(da)<.95){const cs=combatStats();let dmg=cs.atk;if(Math.random()<cs.crit)dmg*=2;damageEnemy(e,dmg);hits++}}}arena.slashes.push({x:p.x,y:p.y,angle,t:.22});burst(p.x+Math.cos(angle)*35,p.y+Math.sin(angle)*35,7,'slash');sfx('slash');if(hits)arenaLog('Sword slash hit '+hits+' enemy'+(hits>1?'ies':'')+'!')}
 function hurtPlayer(d){if(arena.player.inv>0)return;const cs=combatStats();const reduction=hasPassive('guardian')?.92:1;const real=Math.max(1,(d-cs.armor*.7)*reduction);arena.player.hp-=real;arena.player.inv=.38;arena.shake=8;burst(arena.player.x,arena.player.y,10,'hurt');sfx('hurt');arenaLog('You took '+Math.ceil(real)+' damage');arenaStats();if(arena.player.hp<=0){arena.running=false;resetWaveUpgrades();arena.wave=1;arena.spawned=0;arena.enemies=[];arena.projectiles=[];arena.player.hp=combatStats().maxHp;arenaStats();arenaLog('Defeated — wave upgrades lost, character level progression kept.');toast('Defeated 💔 Wave upgrades reset')}}
 function updateArena(dt){if(!arena.running)return;const p=arena.player,s=combatStats();let dx=0,dy=0;if(arena.keys.w||arena.keys.ArrowUp)dy--;if(arena.keys.s||arena.keys.ArrowDown)dy++;if(arena.keys.a||arena.keys.ArrowLeft)dx--;if(arena.keys.d||arena.keys.ArrowRight)dx++;if(dx||dy){const l=Math.hypot(dx,dy);p.x+=dx/l*s.spd*60*dt;p.y+=dy/l*s.spd*60*dt}p.x=Math.max(30,Math.min(arena.w-30,p.x));p.y=Math.max(62,Math.min(arena.h-30,p.y));p.attackCd=Math.max(0,p.attackCd-dt);p.slashT=Math.max(0,p.slashT-dt);p.inv=Math.max(0,p.inv-dt);p.skillCd=Math.max(0,p.skillCd-dt);if(coopSocket&&coopSocket.readyState===1){return}for(const e of [...arena.enemies]){
- const ex=p.x-e.x,ey=p.y-e.y,d=Math.hypot(ex,ey)||1;const contact=e.boss?72:46;
+ const ex=p.x-e.x,ey=p.y-e.y,d=Math.hypot(ex,ey)||1;const playerHitRadius=34;const contact=(e.r||20)+playerHitRadius;
  e.specialCd-=dt;e.poison=Math.max(0,e.poison-dt);
  if(e.boss){
    if(e.specialCd<=0){
@@ -906,7 +906,7 @@ function updateArena(dt){if(!arena.running)return;const p=arena.player,s=combatS
    if(e.dashT>0){e.dashT-=dt;e.x+=Math.cos(e.dashA)*7*60*dt;e.y+=Math.sin(e.dashA)*7*60*dt}
    else if(e.chargeT>0){e.chargeT-=dt;e.x+=Math.cos(e.chargeA)*8*60*dt;e.y+=Math.sin(e.chargeA)*8*60*dt}
    else if(d>contact){e.x+=ex/d*e.speed*60*dt;e.y+=ey/d*e.speed*60*dt}
-   else {e.attack-=dt;if(e.attack<=0){e.attack=.6;hurtPlayer(e.atk)}}
+   else {if(e.touchingTarget!==true){e.touchingTarget=true;hurtPlayer(e.atk)}}
  } else if(e.type==='archer'){
    if(d>280){e.x+=ex/d*e.speed*60*dt;e.y+=ey/d*e.speed*60*dt}else if(d<190){e.x-=ex/d*e.speed*60*dt;e.y-=ey/d*e.speed*60*dt}
    e.attack-=dt;if(e.attack<=0){e.attack=1.25;fireArrow(e)}
@@ -919,16 +919,14 @@ function updateArena(dt){if(!arena.running)return;const p=arena.player,s=combatS
    if(e.specialCd<=0){e.specialCd=9.5;const se={x:e.x+38,y:e.y+18,hp:(28+arena.wave*8),maxHp:(28+arena.wave*8),r:16,speed:.28,atk:4+arena.wave*.6,hit:0,attack:.9,variant:Math.random(),type:'witchling',boss:false,bossIndex:-1,bossDef:null,specialCd:99,poison:0,name:'Witchling',rarity:'Common'};arena.enemies.push(se);burst(e.x,e.y,28,'death');toast('HEART WITCH SUMMONED A WITCHLING! 🔮')}
    if(e.attack<=0){e.attack=2.0;const a=Math.atan2(ey,ex);arena.projectiles.push({x:e.x,y:e.y,vx:Math.cos(a)*4.4,vy:Math.sin(a)*4.4,life:3.0,damage:e.atk*1.15,angle:a,owner:'enemy',kind:'fire'});burst(e.x,e.y,7,'hurt')}
  } else if(e.type==='witchling'){
-   const touch=e.r+22;
-   if(d>touch){e.x+=ex/d*e.speed*60*dt;e.y+=ey/d*e.speed*60*dt}else{hurtPlayer(e.atk)}
+   if(d>90){e.x+=ex/d*e.speed*60*dt;e.y+=ey/d*e.speed*60*dt}else{if(e.touchingTarget!==true){e.touchingTarget=true;hurtPlayer(e.atk)}}
  } else if(e.type==='brute'){
    e.specialCd-=dt;
    if(e.jumpT>0){e.jumpT-=dt;e.x+=Math.cos(e.jumpA)*7.5*60*dt;e.y+=Math.sin(e.jumpA)*7.5*60*dt;if(e.jumpT<=0){if(Math.hypot(e.x-p.x,e.y-p.y)<90)hurtPlayer(e.atk*1.8);arena.shake=12;burst(e.x,e.y,28,'hurt');sfx('hurt')}}
    else if(d>contact){e.x+=ex/d*e.speed*60*dt;e.y+=ey/d*e.speed*60*dt}
    else {e.attack-=dt;if(e.attack<=0){e.attack=2.1;e.jumpT=.65;e.jumpA=Math.atan2(ey,ex);burst(e.x,e.y,12,'slash');toast('HEART BRUTE HEADBUTT! 💥')}}
  } else if(e.type==='guard'){
-   const touch=e.r+22;
-   if(d>touch){e.x+=ex/d*e.speed*60*dt;e.y+=ey/d*e.speed*60*dt}else{hurtPlayer(e.atk);burst(e.x,e.y,10,'slash')}
+   if(d>170){e.x+=ex/d*e.speed*60*dt;e.y+=ey/d*e.speed*60*dt}else{if(e.touchingTarget!==true){e.touchingTarget=true;hurtPlayer(e.atk);burst(e.x,e.y,10,'slash')}}
  } else if(e.type==='mimic'){
    if(d>130){e.x+=ex/d*e.speed*60*dt;e.y+=ey/d*e.speed*60*dt}else{e.attack-=dt;if(e.attack<=0){e.attack=1.55;const a=Math.atan2(ey,ex);arena.projectiles.push({x:e.x,y:e.y,vx:Math.cos(a)*4.5,vy:Math.sin(a)*4.5,life:2.2,damage:e.atk*.9,angle:a,owner:'enemy'})}}
  } else if(e.type==='sentinel'){
@@ -938,12 +936,11 @@ function updateArena(dt){if(!arena.running)return;const p=arena.player,s=combatS
    if(e.specialCd<=0){e.specialCd=4.8;e.chargeT=.55;e.chargeA=Math.atan2(ey,ex);e.shock=true;toast('LOVE BREAKER RAMPAGE! 💔⚔️')}
    if(e.chargeT>0){e.chargeT-=dt;e.x+=Math.cos(e.chargeA)*8.5*60*dt;e.y+=Math.sin(e.chargeA)*8.5*60*dt;if(e.chargeT<=0){if(Math.hypot(e.x-p.x,e.y-p.y)<105)hurtPlayer(e.atk*2.2);for(let j=-1;j<=1;j++){const a=e.chargeA+j*.35;arena.projectiles.push({x:e.x,y:e.y,vx:Math.cos(a)*4.8,vy:Math.sin(a)*4.8,life:2.2,damage:e.atk*.55,angle:a,owner:'enemy'})}burst(e.x,e.y,35,'death')}}
    else if(d>contact+8){e.x+=ex/d*e.speed*60*dt;e.y+=ey/d*e.speed*60*dt}
-   else if(e.attack<=0){e.attack=1.0;hurtPlayer(e.atk*1.25);burst(e.x,e.y,16,'slash')}
- } else {
-   const touch=e.r+22;
-   if(d>touch){e.x+=ex/d*e.speed*60*dt;e.y+=ey/d*e.speed*60*dt;}
-   else {hurtPlayer(e.atk)}
- }
+   else if(e.touchingTarget!==true){e.touchingTarget=true;hurtPlayer(e.atk*1.25);burst(e.x,e.y,16,'slash')}
+ } else if(d>contact){
+   e.x+=ex/d*e.speed*60*dt;e.y+=ey/d*e.speed*60*dt;
+ } else {if(e.touchingTarget!==true){e.touchingTarget=true;hurtPlayer(e.atk)}}
+ if(d>contact){e.touchingTarget=false;}
  e.hit=Math.max(0,e.hit-dt);
  e.x=Math.max(-60,Math.min(arena.w+60,e.x));e.y=Math.max(-60,Math.min(arena.h+60,e.y));
 }
