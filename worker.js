@@ -130,7 +130,7 @@ export class Room {
       const bossDef=BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length];
       hp*=bossDef.hp;spd*=bossDef.spd;atk*=bossDef.atk;r=44;
     }else{const t=TYPES[type]||TYPES.broken;hp*=t[1];spd*=t[2];r=t[3];if(type==='charger')atk*=1.15;if(type==='tank')atk*=1.35;if(type==='duelist')atk*=1.65;if(type==='assassin')atk*=2;if(type==='brute')atk*=1.7;if(type==='lovebreaker')atk*=3;if(type==='berserker')atk*=2.35;if(type==='lancer')atk*=1.9;if(type==='witch')atk*=1.45}
-    this.enemies.push({id:'e'+this.nextEnemy++,x,y,hp,maxHp:hp,r,speed:spd,atk,hit:0,attack:.7+Math.random(),type,boss:type==='boss',bossIndex:type==='boss'?Math.floor(this.wave/5)-1:-1,bossDef:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length]:null,
+    this.enemies.push({id:'e'+this.nextEnemy++,x,y,hp,maxHp:hp,r,speed:spd,atk,hit:0,attack:0,contacting:false,type,boss:type==='boss',bossIndex:type==='boss'?Math.floor(this.wave/5)-1:-1,bossDef:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length]:null,
 name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:(TYPES[type]?.[4]||'Broken Heart'),rarity:type==='boss'?'Legendary':(TYPES[type]?.[5]||'Common')});this.spawned++;
   }
   xpNeed(level){return Math.floor(100*Math.pow(1.12,Math.max(0,level-1)))}
@@ -236,7 +236,7 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     if(Number.isFinite(ox)&&Number.isFinite(oy)&&Math.hypot(ox-p.x,oy-p.y)<=90){attackX=clamp(ox,30,WIDTH-30);attackY=clamp(oy,62,HEIGHT-30)}
     if(weapon==='bow'){
       const projectile={
-        id:'a'+(++this.attackSeq),owner:p.id,x:attackX+Math.cos(angle)*22,y:attackY+Math.sin(angle)*22,
+        id:'a'+(++this.attackSeq),owner:p.id,x:attackX+Math.cos(angle)*46,y:attackY+Math.sin(angle)*46,
         vx:Math.cos(angle)*8.5,vy:Math.sin(angle)*8.5,angle,life:1.8,damage:clamp(Number(m.stats?.atk)||p.atk,1,10000),
         crit:Math.random()<p.crit,hit:false,radius:8
       };
@@ -360,7 +360,7 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
               e.x=clamp(target.x-Math.cos(a)*150,60,WIDTH-60);e.y=clamp(target.y-Math.sin(a)*150,90,HEIGHT-60);
               this.broadcast({type:'bossFx',kind:'blink',enemyId:e.id,x:e.x,y:e.y});
             } else if(sk==='slam'){
-              if(bd<210){target.hp=Math.max(0,target.hp-Math.max(1,e.atk*1.6));if(target.hp<=0){target.hp=0;target.downed=true;target.ix=target.iy=0;this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y})}}
+              if(bd<210){const slamDmg=Math.max(1,e.atk*1.6);target.hp=Math.max(0,target.hp-slamDmg);this.broadcast({type:'enemyHitPlayer',enemyId:e.id,playerId:target.id,x:target.x,y:target.y,damage:slamDmg,kind:'slam',serverNow:now});if(target.hp<=0){target.hp=0;target.downed=true;target.ix=target.iy=0;this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y})}}
               this.broadcast({type:'bossFx',kind:'slam',enemyId:e.id,x:e.x,y:e.y});
             } else if(sk==='shield'){e.shieldT=1.2;this.broadcast({type:'bossFx',kind:'shield',enemyId:e.id,x:e.x,y:e.y})}
             else if(sk==='summon'){for(let i=0;i<2;i++)this.spawn();this.broadcast({type:'bossFx',kind:'summon',enemyId:e.id,x:e.x,y:e.y})}
@@ -379,8 +379,9 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       let target=null,bd=Infinity;for(const p of this.players.values()){if(p.downed)continue;const d=dist(e,p);if(d<bd){bd=d;target=p}}
       if(!target)continue;
       const dx=target.x-e.x,dy=target.y-e.y,d=Math.hypot(dx,dy)||1,contact=e.boss?72:46;
+      const wasContact=!!e.contacting; const nowContact=d<=contact; e.contacting=nowContact;
       if(!e.dashT&&!e.chargeT&&d>contact){e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt}
-      else{e.attack-=dt;if(e.attack<=0){e.attack=e.boss?1.5:.9;const dmg=Math.max(1,e.atk-target.armor*.7);target.hp=Math.max(0,target.hp-dmg);if(target.hp<=0){target.hp=0;target.downed=true;target.reviveProgress=0;target.ix=0;target.iy=0;this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y})}}}
+      else if(!e.dashT&&!e.chargeT){if(nowContact&&!wasContact)e.attack=0;e.attack-=dt;if(e.attack<=0){e.attack=e.boss?1.5:.9;const dmg=Math.max(1,e.atk-target.armor*.7);target.hp=Math.max(0,target.hp-dmg);this.broadcast({type:'enemyHitPlayer',enemyId:e.id,playerId:target.id,x:target.x,y:target.y,damage:dmg,serverNow:now});if(target.hp<=0){target.hp=0;target.downed=true;target.reviveProgress=0;target.ix=0;target.iy=0;this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y})}}}
       e.x=clamp(e.x,-60,WIDTH+60);e.y=clamp(e.y,-60,HEIGHT+60);e.hit=Math.max(0,e.hit-dt);
     }
     const targetCount=this.wave%5===0?1:this.wave*3+4;
