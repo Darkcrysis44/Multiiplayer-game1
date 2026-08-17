@@ -226,109 +226,53 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     }
     this.broadcastState(true);
   }
-
-serverAttack(p,m){
-  const now=Date.now();
-  if(now-p.lastAttack<270)return;
-  p.lastAttack=now;
-  const weapon=m.weapon==='bow'?'bow':'sword';
-  p.weapon=weapon;
-
-  // Keep the authoritative angle, but accept the client's rendered angle when valid.
-  const angle=Number.isFinite(Number(m.angle))?Number(m.angle):p.angle;
-  p.angle=angle;
-
-  // For melee, use the same coordinate system and blade geometry as Solo.
-  // A small bounded prediction allowance prevents visible/server interpolation
-  // from making a contact miss while still preventing arbitrary client positions.
-  let attackX=p.x, attackY=p.y;
-  if(weapon==='sword' && Number.isFinite(Number(m.x)) && Number.isFinite(Number(m.y))){
-    const mx=Number(m.x), my=Number(m.y);
-    if(Math.hypot(mx-p.x,my-p.y)<=55){
-      attackX=mx; attackY=my;
+  serverAttack(p,m){
+    const now=Date.now();if(now-p.lastAttack<300)return;p.lastAttack=now;
+    const weapon=m.weapon==='bow'?'bow':'sword';p.weapon=weapon;
+    const angle=Number.isFinite(Number(m.angle))?Number(m.angle):p.angle;p.angle=angle;
+    // Client prediction can be a few frames ahead of the authoritative player.
+    // Use the reported attack origin when it is close enough to the server position,
+    // so a visually correct swing is not rejected by a tiny prediction offset.
+    let attackX=p.x,attackY=p.y;
+    // Never trust a client-side attack position for melee collision; the
+    // authoritative player position is the single source of truth.
+    if(weapon==='bow'){
+      const projectile={
+        id:'a'+(++this.attackSeq),owner:p.id,x:attackX+Math.cos(angle)*43,y:attackY+Math.sin(angle)*43,
+        vx:Math.cos(angle)*8.5,vy:Math.sin(angle)*8.5,angle,life:1.8,damage:clamp(Number(m.stats?.atk)||p.atk,1,10000),
+        crit:Math.random()<p.crit,hit:false,radius:8
+      };
+      this.projectiles.push(projectile);
+      this.broadcast({type:'fx',kind:'projectile',projectile:{id:projectile.id,owner:p.id,x:projectile.x,y:projectile.y,vx:projectile.vx,vy:projectile.vy,angle,weapon:'bow'},serverNow:now});
+      return;
     }
-  }
-
-  if(weapon==='bow'){
-    const projectile={
-      id:'a'+(++this.attackSeq),
-      owner:p.id,
-      x:attackX+Math.cos(angle)*43,
-      y:attackY+Math.sin(angle)*43,
-      vx:Math.cos(angle)*8.5,
-      vy:Math.sin(angle)*8.5,
-      angle,life:1.8,
-      damage:clamp(Number(m.stats?.atk)||p.atk,1,10000),
-      crit:Math.random()<p.crit,hit:false,radius:8
-    };
-    this.projectiles.push(projectile);
-    this.broadcast({
-      type:'fx',kind:'projectile',
-      projectile:{id:projectile.id,owner:p.id,x:projectile.x,y:projectile.y,
-        vx:projectile.vx,vy:projectile.vy,angle,weapon:'bow'},
-      serverNow:now
-    });
-    return;
-  }
-
-  // EXACT SOLO SWORD COLLISION:
-  // reach = 92, blade radius = 13, and the enemy body radius is included.
-  // Unlike a center-only check, this tests the closest point on the visible
-  // blade segment against every enemy body.
-  const csAtk=clamp(Number(m.stats?.atk)||p.atk,1,10000);
-  const reach=92, bladeRadius=13;
-  const ca=Math.cos(angle), sa=Math.sin(angle);
-  const endX=attackX+ca*reach, endY=attackY+sa*reach;
-  const hitIds=[];
-  let firstHit=null, firstHitDist=Infinity;
-
-  for(const e of this.enemies){
-    if(!e || e.hp<=0)continue;
-
-    const vx=e.x-attackX, vy=e.y-attackY;
-    const t=clamp((vx*ca+vy*sa)/reach,0,1);
-    const cx:attackX+ca*reach*t;
-    const cy:attackY+sa*reach*t;
-    const er=Math.max(10,e.r||20);
-    const bodyDistance=Math.hypot(e.x-cx,e.y-cy);
-
-    if(bodyDistance<=bladeRadius+er){
-      let dmg=csAtk;
-      if(e.shieldT>0)dmg*=.35;
-      if(Math.random()<p.crit)dmg*=2;
-
-      e.hp-=dmg;
-      e.hit=.14;
-      hitIds.push({id:e.id,damage:dmg});
-
-      if(bodyDistance<firstHitDist){
-        firstHit=e;
-        firstHitDist=bodyDistance;
+    // EXACT SOLO SWORD HIT TEST. Keep multiplayer melee geometry identical to Solo:
+    // a 105px radial reach with a 1.0 radian front cone, evaluated against
+    // every enemy body. Do not use a center-only capsule or pick only one target.
+    // The authoritative player position is the sole melee origin.
+    let hitIds=[];
+    const csAtk=clamp(Number(m.stats?.atk)||p.atk,1,10000);
+    for(const e of this.enemies){
+      if(!e || e.hp<=0) continue;
+      const dx=e.x-p.x,dy=e.y-p.y;
+      const dd=Math.hypot(dx,dy);
+      let da=Math.atan2(dy,dx)-angle;
+      da=Math.atan2(Math.sin(da),Math.cos(da));
+      // Same values as Solo's original slash(): dd < 105 && abs(da) < 1.0.
+      // Keep the exact Solo reach/cone; no extra melee range is added.
+      if(dd < 105 && Math.abs(da) < 1.0){
+        let dmg=csAtk;
+        if(e.shieldT>0)dmg*=.35;
+        if(Math.random()<p.crit)dmg*=2;
+        e.hp-=dmg;
+        e.hit=.14;
+        hitIds.push({id:e.id,damage:dmg});
+        if(e.hp<=0)this.killEnemy(e,p.id);
       }
     }
+    const firstHit=hitIds[0];
+    this.broadcast({type:'fx',kind:'attack',attackId:++this.attackSeq,from:p.id,x:attackX,y:attackY,angle,weapon:'sword',hit:hitIds.length>0,hitX:firstHit?this.enemies.find(e=>e.id===firstHit.id)?.x:attackX+Math.cos(angle)*70,hitY:firstHit?this.enemies.find(e=>e.id===firstHit.id)?.y:attackY+Math.sin(angle)*70,hitIds,serverNow:now});
   }
-
-  // Resolve kills after all contacts are collected, matching Solo's
-  // "check every enemy" behavior without invalidating the attack FX.
-  for(const h of hitIds){
-    const e=this.enemies.find(q=>q.id===h.id);
-    if(e && e.hp<=0)this.killEnemy(e,p.id);
-  }
-
-  const hitX=firstHit?firstHit.x:endX;
-  const hitY=firstHit?firstHit.y:endY;
-
-  this.broadcast({
-    type:'fx',kind:'attack',
-    attackId:++this.attackSeq,
-    from:p.id,x:attackX,y:attackY,angle,
-    weapon:'sword',
-    hit:hitIds.length>0,
-    hitX,hitY,
-    hitIds,
-    serverNow:now
-  });
-}
   tick(now){
     const raw=Math.max(0,Math.min(250,now-this.lastTick));this.lastTick=now;
     if(this.phase==='countdown' && now>=this.countdownAt){this.phase='battle';this.broadcast({type:'phase',phase:'battle',wave:this.wave,serverNow:now});}
