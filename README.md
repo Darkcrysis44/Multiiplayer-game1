@@ -14,3 +14,10 @@ Multiplayer reward behavior:
 - Remote players, enemies and projectiles are interpolated for smoother rendering.
 - The Durable Object simulation runs at 30 Hz instead of 20 Hz for tighter multiplayer response.
 - Combat, rewards, progression and enemy collisions remain server-authoritative.
+
+
+## Multiplayer combat alignment fix
+- Player arrows now originate from the visible front/tip area of the bow instead of the character center.
+- Enemy melee targeting now closes to a tighter player hitbox before applying contact damage.
+- Enemy attacks broadcast a dedicated attack FX event so multiplayer enemies visibly swing/hit like Solo.
+- Enemy hit animation and impact effects are rendered client-side while damage remains server-authoritative.
