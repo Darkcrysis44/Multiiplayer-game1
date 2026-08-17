@@ -228,58 +228,53 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
   }
   serverAttack(p,m){
     const now=Date.now();
-    if(now-p.lastAttack<270)return;
-    p.lastAttack=now;
     const weapon=m.weapon==='bow'?'bow':'sword';
+    const cooldown=weapon==='bow'?420:270;
+    if(now-p.lastAttack<cooldown)return;
+    p.lastAttack=now;
     p.weapon=weapon;
     const angle=Number.isFinite(Number(m.angle))?Number(m.angle):p.angle;
     p.angle=angle;
 
     if(weapon==='bow'){
+      const arrowMult=clamp(Number(m.arrowMult)||1,1,3);
       const projectile={
         id:'a'+(++this.attackSeq),owner:p.id,
-        x:p.x+Math.cos(angle)*43,y:p.y+Math.sin(angle)*43,
-        vx:Math.cos(angle)*8.5,vy:Math.sin(angle)*8.5,angle,life:1.8,
-        damage:clamp(Number(m.stats?.atk)||p.atk,1,10000),
-        crit:Math.random()<p.crit,hit:false,radius:8
+        x:p.x,y:p.y,
+        vx:Math.cos(angle)*7.2,vy:Math.sin(angle)*7.2,
+        angle,life:2.4,
+        damage:clamp((Number(m.stats?.atk)||p.atk)*1.15*arrowMult,1,10000),
+        crit:false,hit:false,radius:16,arrowType:String(m.arrowType||'Basic Arrow')
       };
       this.projectiles.push(projectile);
-      this.broadcast({type:'fx',kind:'projectile',projectile:{id:projectile.id,owner:p.id,x:projectile.x,y:projectile.y,vx:projectile.vx,vy:projectile.vy,angle,weapon:'bow'},serverNow:now});
+      this.broadcast({
+        type:'fx',kind:'projectile',
+        projectile:{id:projectile.id,owner:p.id,x:projectile.x,y:projectile.y,
+          vx:projectile.vx,vy:projectile.vy,angle,weapon:'bow'},
+        serverNow:now
+      });
       return;
     }
 
-    // EXACTLY mirror the visible Solo sword arc. The drawn slash is an
-    // annular sector centered on the player, with its 55px radius aligned to the sword tip,
-    // spanning -1.0..0.8 radians. Expand it by the enemy body radius so
-    // an enemy whose sprite/body is crossed by the blade cannot randomly
-    // miss because of a single-pixel center-point test.
-    let hits=[];
+    // Same Solo sword attack timing, origin, arc and damage rules.
+    const hits=[];
     const ca=Math.cos(angle),sa=Math.sin(angle);
-    const arcCx=0,arcR=55,arcHalfW=5.5;
-    const attackX=Number.isFinite(Number(m.x))?Number(m.x):p.x;
-    const attackY=Number.isFinite(Number(m.y))?Number(m.y):p.y;
-    const origins=[[attackX,attackY],[p.x,p.y]];
     for(const e of this.enemies){
       if(!e||e.hp<=0)continue;
       const er=Math.max(10,e.r||20);
-      let hit=false;
-      for(const [ox,oy] of origins){
-        const dxw=e.x-ox,dyw=e.y-oy;
-        const lx=dxw*ca+dyw*sa;
-        const ly=-dxw*sa+dyw*ca;
-        const dx=lx-arcCx,dy=ly,rd=Math.hypot(dx,dy)||0.001;
-        const ad=Math.atan2(dy,dx);
-        const angularPad=Math.asin(Math.min(0.98,er/Math.max(rd,er)));
-        const radialHit=Math.abs(rd-arcR)<=arcHalfW+er;
-        const angleHit=ad>=(-1-angularPad)&&ad<=(0.8+angularPad);
-        if(radialHit&&angleHit){hit=true;break;}
-      }
-      if(hit){
+      const dxw=e.x-p.x,dyw=e.y-p.y;
+      const lx=dxw*ca+dyw*sa;
+      const ly=-dxw*sa+dyw*ca;
+      const rd=Math.hypot(lx,ly)||0.001;
+      let ad=Math.atan2(ly,lx);
+      const angularPad=Math.asin(Math.min(.98,er/Math.max(rd,er)));
+      const radialHit=Math.abs(rd-55)<=5.5+er;
+      const angleHit=ad>=(-1-angularPad)&&ad<=(.8+angularPad);
+      if(radialHit&&angleHit){
         let dmg=clamp(Number(m.stats?.atk)||p.atk,1,10000);
         if(e.shieldT>0)dmg*=.35;
         if(Math.random()<p.crit)dmg*=2;
-        e.hp=Math.max(0,e.hp-dmg);
-        e.hit=.14;
+        e.hp=Math.max(0,e.hp-dmg);e.hit=.12;
         hits.push({id:e.id,damage:dmg});
       }
     }

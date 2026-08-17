@@ -1206,19 +1206,17 @@ function coopHandle(m){
       if(p){p.slashT=m.weapon==='bow'?0:.22;p.angle=a;p.attackAngle=a;p.weapon=m.weapon||'sword'}
       if(m.weapon==='bow'){
         arena.projectiles.push({
-          x:ap.x+Math.cos(a)*43,y:ap.y+Math.sin(a)*43,
-          vx:Math.cos(a)*8.5,vy:Math.sin(a)*8.5,
-          life:1.6,damage:0,angle:a,owner:'remoteArrow',kind:'playerArrow',
+          x:ap.x,y:ap.y,
+          vx:Math.cos(a)*7.2,vy:Math.sin(a)*7.2,
+          life:2.4,damage:0,angle:a,owner:'remoteArrow',kind:'playerArrow',
           hit:m.hit?{x:m.hitX,y:m.hitY}:null
         });
         burst(ap.x+Math.cos(a)*18,ap.y+Math.sin(a)*18,3,'arrow');
         sfx('bow');
       }else{
-        // Remote slash uses the exact same origin, angle and 0.22s lifetime
-        // as Solo. Server collision uses the matching 92px x 13px blade capsule.
-        arena.slashes=arena.slashes.filter(q=>!q.remote || Math.hypot((q.x||0)-ap.x,(q.y||0)-ap.y)>2);
+        // Remote players use the same Solo slash visual.
         arena.slashes.push({x:ap.x,y:ap.y,angle:a,t:.22,maxT:.22,remote:true});
-        burst(ap.x+Math.cos(a)*35,ap.y+Math.sin(a)*35,5,'slash');
+        burst(ap.x+Math.cos(a)*35,ap.y+Math.sin(a)*35,7,'slash');
         sfx('slash');
       }
     }
@@ -1399,28 +1397,37 @@ $('coopStartBattle').onclick=()=>{
 const originalSlash=slash;
 slash=function(angle){
   if(coopSocket&&coopSocket.readyState===1&&coopStarted){
-    const attackNow=performance.now();
-    if(arena.player.downed||arena.player.attackCd>0||attackNow-coopLocalAttackAt<300)return;
-    coopLocalAttackAt=attackNow;
+    if(arena.player.downed||arena.player.attackCd>0)return;
+    const weapon=arenaState.activeWeaponType==='bow'?'bow':'sword';
     arena.player.angle=angle;
     arena.player.attackAngle=angle;
-    arena.player.angle=angle;
-    arena.player.attackCd=.27;
-    const weapon=arenaState.activeWeaponType==='bow'?'bow':'sword';
     arena.player.weapon=weapon;
+    const cs=combatStats();
+
+    // Multiplayer uses the Solo attack presentation and timings.
     if(weapon==='bow'){
-      // The server creates the authoritative arrow and immediately echoes its projectile id.
-      burst(arena.player.x+Math.cos(angle)*18,arena.player.y+Math.sin(angle)*18,3,'arrow');
+      arena.player.attackCd=.42;
+      const arrowMult={
+        "Light Arrow":1.1,"Fire Arrow":1.15,"Ice Arrow":1.1,
+        "Piercing Arrow":1.2,"Poison Arrow":1.2,"Explosive Arrow":1.3,
+        "Chain Arrow":1.25,"Moon Arrow":1.7,"Cupid Arrow":2,
+        "Eternal Rose Arrow":2.4
+      }[arenaState.gear.arrow]||1;
+      // Do not simulate a second multiplayer-specific projectile locally.
+      // The server will create the exact Solo projectile and echo it back.
+      burst(arena.player.x,arena.player.y,7,'arrow');
       sfx('bow');
-    }else{
-      // One clean local swing per attack. Remove a previous local swing so
-      // rapid click/key/touch events cannot visually stack two slashes.
-      arena.player.slashT=.22;
-      arena.slashes=arena.slashes.filter(q=>q.remote);
-      arena.slashes.push({x:arena.player.x,y:arena.player.y,angle,t:.22,maxT:.22,remote:false});
-      burst(arena.player.x+Math.cos(angle)*35,arena.player.y+Math.sin(angle)*35,5,'slash');
-      sfx('slash');
+      coopSend({type:'attack',angle,weapon,x:arena.player.x,y:arena.player.y,
+        stats:coopStats(),arrowType:arenaState.gear.arrow,arrowMult});
+      return;
     }
+
+    arena.player.attackCd=.27;
+    arena.player.slashT=.22;
+    arena.slashes=arena.slashes.filter(q=>q.remote);
+    arena.slashes.push({x:arena.player.x,y:arena.player.y,angle,t:.22,maxT:.22,remote:false});
+    burst(arena.player.x+Math.cos(angle)*35,arena.player.y+Math.sin(angle)*35,7,'slash');
+    sfx('slash');
     coopSend({type:'attack',angle,weapon,x:arena.player.x,y:arena.player.y,stats:coopStats()});
     return;
   }
