@@ -235,49 +235,44 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     p.weapon=weapon;
     const angle=Number.isFinite(Number(m.angle))?Number(m.angle):p.angle;
     p.angle=angle;
+    const stats=clamp(Number(m.stats?.atk)||p.atk,1,10000);
 
     if(weapon==='bow'){
       const arrowMult=clamp(Number(m.arrowMult)||1,1,3);
-      // Arrow starts from the center of the bow, not from the player's body.
-      // The visible bow is centered ~27px in front of the player.
-      const bowOffset=27;
+      // Exact Solo projectile origin/speed: the arrow starts at the player
+      // center, which is also the visual bow/string center in Solo.
       const projectile={
         id:'a'+(++this.attackSeq),owner:p.id,
-        x:p.x+Math.cos(angle)*bowOffset,
-        y:p.y+Math.sin(angle)*bowOffset,
+        x:p.x,y:p.y,
         vx:Math.cos(angle)*7.2,vy:Math.sin(angle)*7.2,
         angle,life:2.4,
-        damage:clamp((Number(m.stats?.atk)||p.atk)*1.15*arrowMult,1,10000),
+        damage:clamp(stats*1.15*arrowMult,1,10000),
         crit:false,hit:false,radius:6,arrowType:String(m.arrowType||'Basic Arrow')
       };
       this.projectiles.push(projectile);
       this.broadcast({
         type:'fx',kind:'projectile',
         projectile:{id:projectile.id,owner:p.id,x:projectile.x,y:projectile.y,
-          vx:projectile.vx,vy:projectile.vy,angle,weapon:'bow'},
-        serverNow:now
+          vx:projectile.vx,vy:projectile.vy,angle,weapon:'bow',life:2.4}
       });
       return;
     }
 
-    // Sword is a literal blade segment now. If the enemy body touches the
-    // visible sword line, it is a hit immediately. No slash arc, no angle cone.
+    // Exact Solo sword hit rule: distance + facing angle. No separate
+    // multiplayer-only hitbox or blade geometry.
     const hits=[];
-    const ca=Math.cos(angle),sa=Math.sin(angle);
-    const bladeStart=7, bladeEnd=52, bladeRadius=4.5;
-    for(const e of this.enemies){
-      if(!e||e.hp<=0)continue;
-      const vx=e.x-p.x,vy=e.y-p.y;
-      const along=vx*ca+vy*sa;
-      if(along < bladeStart-(e.r||20) || along > bladeEnd+(e.r||20)) continue;
-      const side=Math.abs(-vx*sa+vy*ca);
-      const er=Math.max(8,e.r||20);
-      if(side <= er+bladeRadius){
-        let dmg=clamp(Number(m.stats?.atk)||p.atk,1,10000);
-        if(e.shieldT>0)dmg*=.35;
-        if(Math.random()<p.crit)dmg*=2;
-        e.hp=Math.max(0,e.hp-dmg);e.hit=.12;
-        hits.push({id:e.id,damage:dmg});
+    for(const e of [...this.enemies]){
+      const dx=e.x-p.x,dy=e.y-p.y,dist=Math.hypot(dx,dy);
+      if(dist<125){
+        let da=Math.atan2(dy,dx)-angle;
+        da=Math.atan2(Math.sin(da),Math.cos(da));
+        if(Math.abs(da)<.95){
+          let dmg=stats;
+          if(e.shieldT>0)dmg*=.35;
+          if(Math.random()<p.crit)dmg*=2;
+          e.hp=Math.max(0,e.hp-dmg);e.hit=.12;
+          hits.push({id:e.id,damage:dmg});
+        }
       }
     }
     for(const h of hits){
