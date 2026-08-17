@@ -233,8 +233,9 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     // Client prediction can be a few frames ahead of the authoritative player.
     // Use the reported attack origin when it is close enough to the server position,
     // so a visually correct swing is not rejected by a tiny prediction offset.
-    const ox=Number(m.x),oy=Number(m.y);let attackX=p.x,attackY=p.y;
-    if(Number.isFinite(ox)&&Number.isFinite(oy)&&Math.hypot(ox-p.x,oy-p.y)<=90){attackX=clamp(ox,30,WIDTH-30);attackY=clamp(oy,62,HEIGHT-30)}
+    let attackX=p.x,attackY=p.y;
+    // Never trust a client-side attack position for melee collision; the
+    // authoritative player position is the single source of truth.
     if(weapon==='bow'){
       const projectile={
         id:'a'+(++this.attackSeq),owner:p.id,x:attackX+Math.cos(angle)*43,y:attackY+Math.sin(angle)*43,
@@ -245,28 +246,27 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       this.broadcast({type:'fx',kind:'projectile',projectile:{id:projectile.id,owner:p.id,x:projectile.x,y:projectile.y,vx:projectile.vx,vy:projectile.vy,angle,weapon:'bow'},serverNow:now});
       return;
     }
-    // Melee hitbox: use the actual sword arc as a short capsule rather than
-    // testing against the enemy center with an oversized side radius. This
-    // keeps hits consistent with the visible slash and still catches an
-    // enemy when its body enters the blade's reach.
-    let best=null,bestAlong=Infinity;
-    const maxRange=128,bladeWidth=30,ca=Math.cos(angle),sa=Math.sin(angle);
+    // Server-authoritative sword capsule. It checks the entire enemy body,
+    // not only its center, so edge contacts are reliable and deterministic.
+    let best=null,bestDist=Infinity;
+    const maxRange=132, bladeRadius=27, ca=Math.cos(angle), sa=Math.sin(angle);
+    const endX=attackX+ca*maxRange, endY=attackY+sa*maxRange;
     for(const e of this.enemies){
-      const rx=e.x-attackX,ry=e.y-attackY;
-      const along=rx*ca+ry*sa;
-      const side=Math.abs(-rx*sa+ry*ca);
-      const er=e.r||20;
-      if(along<-8||along>maxRange+er)continue;
-      if(side>bladeWidth+er)continue;
-      if(Math.hypot(rx,ry)>maxRange+er)continue;
-      if(along<bestAlong){best=e;bestAlong=along}
+      const er=Math.max(10,e.r||20);
+      const vx=e.x-attackX,vy=e.y-attackY;
+      const t=clamp((vx*ca+vy*sa)/maxRange,0,1);
+      const cx=attackX+ca*maxRange*t,cy=attackY+sa*maxRange*t;
+      const d=Math.hypot(e.x-cx,e.y-cy);
+      if(d<=bladeRadius+er && d<bestDist){best=e;bestDist=d}
     }
-    let hitX=attackX+ca*maxRange,hitY=attackY+sa*maxRange;
+    let hitX=endX,hitY=endY;
     if(best){
       hitX=best.x;hitY=best.y;
-      let dmg=clamp(Number(m.stats?.atk)||p.atk,1,10000);if(best.shieldT>0)dmg*=.35;if(Math.random()<p.crit)dmg*=2;
-      best.hp-=dmg;best.hit=.12;
-      if(best.hp<=0){this.killEnemy(best,p.id);}
+      let dmg=clamp(Number(m.stats?.atk)||p.atk,1,10000);
+      if(best.shieldT>0)dmg*=.35;
+      if(Math.random()<p.crit)dmg*=2;
+      best.hp-=dmg;best.hit=.14;
+      if(best.hp<=0)this.killEnemy(best,p.id);
     }
     this.broadcast({type:'fx',kind:'attack',attackId:++this.attackSeq,from:p.id,x:p.x,y:p.y,angle,weapon:'sword',hit:!!best,hitX,hitY,serverNow:now});
   }
@@ -384,29 +384,35 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
         if(e.dashT>0){e.dashT-=dt;e.x+=Math.cos(e.dashA)*7*60*dt;e.y+=Math.sin(e.dashA)*7*60*dt}
         else if(e.chargeT>0){e.chargeT-=dt;e.x+=Math.cos(e.chargeA)*8*60*dt;e.y+=Math.sin(e.chargeA)*8*60*dt}
       }
-      let target=null,bd=Infinity;for(const p of this.players.values()){if(p.downed)continue;const d=dist(e,p);if(d<bd){bd=d;target=p}}
+      let target=null,bd=Infinity;
+      for(const p of this.players.values()){
+        if(p.downed)continue;
+        const d=dist(e,p);
+        if(d<bd){bd=d;target=p}
+      }
       if(!target)continue;
-      const dx=target.x-e.x,dy=target.y-e.y,d=Math.hypot(dx,dy)||1;
-      // The player is a full-body hitbox. Melee enemies stop only when their
-      // own radius touches that hitbox, not when they reach the player's center.
-      const playerHitRadius=34;
-      const contact=e.boss?(e.r||34)+playerHitRadius:(e.r||20)+playerHitRadius;
+
+      // Rounded body hitbox: melee AI seeks the nearest point on the player's
+      // body rectangle, so it can physically contact the sides/arms/legs.
+      const halfW=25,halfH=34;
+      const nx=clamp(e.x,target.x-halfW,target.x+halfW);
+      const ny=clamp(e.y,target.y-halfH,target.y+halfH);
+      const dx=nx-e.x,dy=ny-e.y,d=Math.hypot(dx,dy)||1;
+      const enemyR=Math.max(10,e.r||20);
+      const contact=enemyR+2;
       if(!e.dashT&&!e.chargeT&&d>contact){
         e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt;
         e.touchingTarget=null;
       }else if(!e.dashT&&!e.chargeT){
-        // No attack wind-up/cooldown: the first frame of body contact deals damage.
-        // Staying inside the same contact does not machine-gun damage every tick;
-        // separating and touching again immediately creates the next hit.
         if(e.touchingTarget!==target.id){
           e.touchingTarget=target.id;
           const a=Math.atan2(target.y-e.y,target.x-e.x);
           const dmg=Math.max(1,e.atk-target.armor*.7);
-          this.broadcast({type:'enemyAttackFx',enemyId:e.id,targetId:target.id,x:target.x,y:target.y,angle:a,damage:dmg,serverNow:now});
+          this.broadcast({type:'enemyAttackFx',enemyId:e.id,targetId:target.id,x:nx,y:ny,angle:a,damage:dmg,serverNow:now});
           target.hp=Math.max(0,target.hp-dmg);
           if(target.hp<=0){target.hp=0;target.downed=true;target.reviveProgress=0;target.ix=0;target.iy=0;this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y})}
         }
-      } else {
+      }else{
         e.touchingTarget=null;
       }
       e.x=clamp(e.x,-60,WIDTH+60);e.y=clamp(e.y,-60,HEIGHT+60);e.hit=Math.max(0,e.hit-dt);
