@@ -1,6 +1,7 @@
 const MAX_PLAYERS = 4;
+const COOP_SPEED_MULT = 1.22;
 const TICK_MS = 33;       // 30 Hz authoritative simulation; client predicts locally at 60 FPS
-const STATE_MS = 50;      // 20 Hz snapshots; local player is client-predicted, remote entities are interpolated
+const STATE_MS = 33;      // 30 Hz snapshots for tighter multiplayer reconciliation
 const WIDTH = 1200, HEIGHT = 700;
 const TYPES = {
   broken:[.55,1,1,21,'Broken Heart','Common'], charger:[.10,.8,1.8,19,'Heart Charger','Uncommon'],
@@ -263,7 +264,7 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     const dt=raw/1000;
     for(const p of this.players.values()){p.skillCd=Math.max(0,(p.skillCd||0)-raw/1000);
       if(p.downed){p.ix=0;p.iy=0;continue}
-      const l=Math.hypot(p.ix,p.iy)||1;p.x=clamp(p.x+p.ix/l*p.spd*60*dt,30,WIDTH-30);p.y=clamp(p.y+p.iy/l*p.spd*60*dt,62,HEIGHT-30);
+      const l=Math.hypot(p.ix,p.iy)||1;p.x=clamp(p.x+p.ix/l*p.spd*COOP_SPEED_MULT*60*dt,30,WIDTH-30);p.y=clamp(p.y+p.iy/l*p.spd*COOP_SPEED_MULT*60*dt,62,HEIGHT-30);
     }
     // Authoritative co-op arrows: move on the server and damage only on actual collision.
     for(const a of this.projectiles){
