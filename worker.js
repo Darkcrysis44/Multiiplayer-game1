@@ -237,29 +237,26 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     p.angle=angle;
     const stats=clamp(Number(m.stats?.atk)||p.atk,1,10000);
 
+    // Combat reference is the Solo arena implementation.  Multiplayer only
+    // moves the authoritative result to the server; it does not invent a
+    // second weapon geometry.
     if(weapon==='bow'){
       const arrowMult=clamp(Number(m.arrowMult)||1,1,3);
-      // Exact Solo projectile origin/speed: the arrow starts at the player
-      // center, which is also the visual bow/string center in Solo.
+      const origin=24; // center of the Solo bow/string line
       const projectile={
         id:'a'+(++this.attackSeq),owner:p.id,
-        x:p.x,y:p.y,
+        x:p.x+Math.cos(angle)*origin,y:p.y+Math.sin(angle)*origin,
         vx:Math.cos(angle)*7.2,vy:Math.sin(angle)*7.2,
         angle,life:2.4,
         damage:clamp(stats*1.15*arrowMult,1,10000),
-        crit:false,hit:false,radius:6,arrowType:String(m.arrowType||'Basic Arrow')
+        crit:false,hit:false,radius:7,arrowType:String(m.arrowType||'Basic Arrow')
       };
       this.projectiles.push(projectile);
-      this.broadcast({
-        type:'fx',kind:'projectile',
-        projectile:{id:projectile.id,owner:p.id,x:projectile.x,y:projectile.y,
-          vx:projectile.vx,vy:projectile.vy,angle,weapon:'bow',life:2.4}
-      });
+      this.broadcast({type:'fx',kind:'projectile',projectile:{id:projectile.id,owner:p.id,x:projectile.x,y:projectile.y,vx:projectile.vx,vy:projectile.vy,angle,weapon:'bow',life:2.4}});
       return;
     }
 
-    // Exact Solo sword hit rule: distance + facing angle. No separate
-    // multiplayer-only hitbox or blade geometry.
+    // Exact Solo sword rule: 125px reach and 0.95 rad facing cone.
     const hits=[];
     for(const e of [...this.enemies]){
       const dx=e.x-p.x,dy=e.y-p.y,dist=Math.hypot(dx,dy);
@@ -279,11 +276,7 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       const e=this.enemies.find(q=>q.id===h.id);
       if(e&&e.hp<=0)this.killEnemy(e,p.id);
     }
-    this.broadcast({
-      type:'fx',kind:'attack',attackId:++this.attackSeq,
-      from:p.id,x:p.x,y:p.y,angle,weapon:'sword',
-      hit:hits.length>0,hitIds:hits,serverNow:now
-    });
+    this.broadcast({type:'fx',kind:'attack',attackId:++this.attackSeq,from:p.id,x:p.x,y:p.y,angle,weapon:'sword',hit:hits.length>0,hitIds:hits,serverNow:now});
     this.broadcastState(true);
   }
 
