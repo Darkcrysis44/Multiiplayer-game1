@@ -766,7 +766,7 @@ const arenaState={
  level:Number(savedArena.level||1),xp:Number(savedArena.xp||0),rebirths:Number(savedArena.rebirths||0),mult:Number(savedArena.mult||1),
  stats:Object.assign({},arenaBase,savedArena.stats||{}),waveUpgrades:{hp:0,atk:0,spd:0,crit:0,armor:0},gear:Object.assign({weapon:'Rose Blade',bow:'Cupid Bow',armor:'Love Cloth',acc:'None',arrow:'Basic Arrow'},savedArena.gear||{}),activeWeapon:savedArena.activeWeapon||'Rose Blade',activeWeaponType:savedArena.activeWeaponType||'sword',skills:Array.isArray(savedArena.skills)?savedArena.skills:[],passives:Array.isArray(savedArena.passives)?savedArena.passives:[],lastLoot:savedArena.lastLoot||null
 };
-let arena={running:false,wave:1,enemies:[],projectiles:[],particles:[],slashes:[],keys:{},last:0,spawned:0,kills:0,shake:0,mouseX:0,mouseY:0,player:{x:0,y:0,hp:100,dir:1,angle:0,attackCd:0,slashT:0,hitT:0,hitAngle:0,inv:0,skillCd:0}};
+let arena={running:false,wave:1,enemies:[],projectiles:[],particles:[],slashes:[],keys:{},last:0,spawned:0,kills:0,shake:0,mouseX:0,mouseY:0,player:{x:0,y:0,hp:100,dir:1,angle:0,attackCd:0,slashT:0,inv:0,skillCd:0}};
 let arenaAudio=null;
 let coopServerStats=null;
 function saveArena(){
@@ -883,8 +883,8 @@ function updateProjectiles(dt){for(const q of arena.projectiles){q.x+=q.vx*60*dt
 function drawProjectiles(){for(const q of arena.projectiles){ac.save();ac.translate(q.x,q.y);ac.rotate(q.angle);if(q.kind==='fire'){ac.shadowColor='#ff6b3d';ac.shadowBlur=18;ac.fillStyle='#ff7a3d';ac.beginPath();ac.arc(0,0,8,0,7);ac.fill();ac.fillStyle='#ffd36b';ac.beginPath();ac.arc(-2,0,4,0,7);ac.fill()}else if(q.kind==='playerArrow'||q.kind==='arrow'){ac.strokeStyle=q.owner==='playerSkill'?'#fff0f5':'#d8b7c8';ac.lineWidth=3;ac.beginPath();ac.moveTo(-18,0);ac.lineTo(10,0);ac.stroke();ac.fillStyle='#ffd1df';ac.beginPath();ac.moveTo(13,0);ac.lineTo(3,-6);ac.lineTo(3,6);ac.closePath();ac.fill()}else{ac.strokeStyle='#f5d7df';ac.lineWidth=3;ac.beginPath();ac.moveTo(-15,0);ac.lineTo(10,0);ac.stroke();ac.fillStyle='#ff8eaa';ac.beginPath();ac.moveTo(12,0);ac.lineTo(4,-5);ac.lineTo(4,5);ac.closePath();ac.fill();ac.fillStyle='#fff';ac.beginPath();ac.arc(-12,0,3,0,7);ac.fill()}ac.restore()}}
 function damageEnemy(e,dmg){if(e.shieldT>0)dmg*=.35;e.hp-=dmg;e.hit=.12;arena.shake=4;burst(e.x,e.y,8,'heart');sfx('hit');if(e.hp<=0){let reward=(e.boss?80+arena.wave*8:3+Math.floor(arena.wave*.9));if(hasPassive('fortune'))reward=Math.ceil(reward*1.15);addArenaMoney(reward);gainXp((e.boss?180:25)+arena.wave*6);if(hasPassive('vamp'))arena.player.hp=Math.min(combatStats().maxHp,arena.player.hp+combatStats().maxHp*.04);arena.kills++;burst(e.x,e.y,e.boss?35:18,'death');if(e.type==='splitter'&&!e.boss&&arena.enemies.length<15){for(let i=0;i<2;i++)arena.enemies.push({x:e.x+(i?14:-14),y:e.y,hp:e.maxHp*.22,maxHp:e.maxHp*.22,r:13,speed:e.speed*1.5,atk:e.atk*.55,hit:0,attack:.3,variant:Math.random(),type:'broken',boss:false,bossIndex:-1,bossDef:null,specialCd:2,poison:0,name:'Broken Heart',rarity:'Common'})}arena.enemies.splice(arena.enemies.indexOf(e),1);sfx('kill');arenaLog((e.boss?'BOSS '+e.bossDef.name+' defeated':'Enemy defeated')+' • +'+reward+' 💗')}}
 function slash(angle){if(!arena.running||arena.player.attackCd>0)return;initArenaAudio();if(arenaState.activeWeaponType==='bow'){arena.player.attackCd=.42;arena.player.angle=angle;const cs=combatStats();arena.projectiles.push({x:arena.player.x,y:arena.player.y,vx:Math.cos(angle)*7.2,vy:Math.sin(angle)*7.2,life:2.4,damage:cs.atk*1.15*({"Light Arrow":1.1,"Fire Arrow":1.15,"Ice Arrow":1.1,"Piercing Arrow":1.2,"Poison Arrow":1.2,"Explosive Arrow":1.3,"Chain Arrow":1.25,"Moon Arrow":1.7,"Cupid Arrow":2,"Eternal Rose Arrow":2.4}[arenaState.gear.arrow]||1),angle,owner:'playerSkill',kind:'playerArrow',arrowType:arenaState.gear.arrow});burst(arena.player.x,arena.player.y,7,'arrow');sfx('bow');return}arena.player.attackCd=.27;arena.player.slashT=.22;arena.player.angle=angle;arena.player.dir=Math.cos(angle)>=0?1:-1;const p=arena.player;let hits=0;for(const q of [...arena.projectiles]){const dd=Math.hypot(q.x-p.x,q.y-p.y);let da=Math.atan2(q.y-p.y,q.x-p.x)-angle;da=Math.atan2(Math.sin(da),Math.cos(da));if(dd<105&&Math.abs(da)<1.0)destroyProjectile(q)}for(const e of [...arena.enemies]){const dx=e.x-p.x,dy=e.y-p.y,dist=Math.hypot(dx,dy);if(dist<125){let da=Math.atan2(dy,dx)-angle;da=Math.atan2(Math.sin(da),Math.cos(da));if(Math.abs(da)<.95){const cs=combatStats();let dmg=cs.atk;if(Math.random()<cs.crit)dmg*=2;damageEnemy(e,dmg);hits++}}}arena.slashes.push({x:p.x,y:p.y,angle,t:.22});burst(p.x+Math.cos(angle)*35,p.y+Math.sin(angle)*35,7,'slash');sfx('slash');if(hits)arenaLog('Sword slash hit '+hits+' enemy'+(hits>1?'ies':'')+'!')}
-function hurtPlayer(d){if(arena.player.inv>0)return;const cs=combatStats();const reduction=hasPassive('guardian')?.92:1;const real=Math.max(1,(d-cs.armor*.7)*reduction);arena.player.hp-=real;arena.player.inv=.38;arena.player.hitT=.26;arena.player.hitAngle=Number.isFinite(arena.player.angle)?arena.player.angle:0;arena.shake=8;burst(arena.player.x,arena.player.y,10,'hurt');sfx('hurt');arenaLog('You took '+Math.ceil(real)+' damage');arenaStats();if(arena.player.hp<=0){arena.running=false;resetWaveUpgrades();arena.wave=1;arena.spawned=0;arena.enemies=[];arena.projectiles=[];arena.player.hp=combatStats().maxHp;arenaStats();arenaLog('Defeated — wave upgrades lost, character level progression kept.');toast('Defeated 💔 Wave upgrades reset')}}
-function updateArena(dt){if(!arena.running)return;const p=arena.player,s=combatStats();let dx=0,dy=0;if(arena.keys.w||arena.keys.ArrowUp)dy--;if(arena.keys.s||arena.keys.ArrowDown)dy++;if(arena.keys.a||arena.keys.ArrowLeft)dx--;if(arena.keys.d||arena.keys.ArrowRight)dx++;if(dx||dy){const l=Math.hypot(dx,dy);p.x+=dx/l*s.spd*60*dt;p.y+=dy/l*s.spd*60*dt}p.x=Math.max(30,Math.min(arena.w-30,p.x));p.y=Math.max(62,Math.min(arena.h-30,p.y));p.attackCd=Math.max(0,p.attackCd-dt);p.slashT=Math.max(0,p.slashT-dt);p.hitT=Math.max(0,(p.hitT||0)-dt);p.inv=Math.max(0,p.inv-dt);p.skillCd=Math.max(0,p.skillCd-dt);if(coopSocket&&coopSocket.readyState===1){return}for(const e of [...arena.enemies]){
+function hurtPlayer(d){if(arena.player.inv>0)return;const cs=combatStats();const reduction=hasPassive('guardian')?.92:1;const real=Math.max(1,(d-cs.armor*.7)*reduction);arena.player.hp-=real;arena.player.inv=.38;arena.shake=8;burst(arena.player.x,arena.player.y,10,'hurt');sfx('hurt');arenaLog('You took '+Math.ceil(real)+' damage');arenaStats();if(arena.player.hp<=0){arena.running=false;resetWaveUpgrades();arena.wave=1;arena.spawned=0;arena.enemies=[];arena.projectiles=[];arena.player.hp=combatStats().maxHp;arenaStats();arenaLog('Defeated — wave upgrades lost, character level progression kept.');toast('Defeated 💔 Wave upgrades reset')}}
+function updateArena(dt){if(!arena.running)return;const p=arena.player,s=combatStats();let dx=0,dy=0;if(arena.keys.w||arena.keys.ArrowUp)dy--;if(arena.keys.s||arena.keys.ArrowDown)dy++;if(arena.keys.a||arena.keys.ArrowLeft)dx--;if(arena.keys.d||arena.keys.ArrowRight)dx++;if(dx||dy){const l=Math.hypot(dx,dy);p.x+=dx/l*s.spd*60*dt;p.y+=dy/l*s.spd*60*dt}p.x=Math.max(30,Math.min(arena.w-30,p.x));p.y=Math.max(62,Math.min(arena.h-30,p.y));p.attackCd=Math.max(0,p.attackCd-dt);p.slashT=Math.max(0,p.slashT-dt);p.inv=Math.max(0,p.inv-dt);p.skillCd=Math.max(0,p.skillCd-dt);if(coopSocket&&coopSocket.readyState===1){return}for(const e of [...arena.enemies]){
  const ex=p.x-e.x,ey=p.y-e.y,d=Math.hypot(ex,ey)||1;const contact=e.boss?72:46;
  e.specialCd-=dt;e.poison=Math.max(0,e.poison-dt);
  if(e.boss){
@@ -919,14 +919,16 @@ function updateArena(dt){if(!arena.running)return;const p=arena.player,s=combatS
    if(e.specialCd<=0){e.specialCd=9.5;const se={x:e.x+38,y:e.y+18,hp:(28+arena.wave*8),maxHp:(28+arena.wave*8),r:16,speed:.28,atk:4+arena.wave*.6,hit:0,attack:.9,variant:Math.random(),type:'witchling',boss:false,bossIndex:-1,bossDef:null,specialCd:99,poison:0,name:'Witchling',rarity:'Common'};arena.enemies.push(se);burst(e.x,e.y,28,'death');toast('HEART WITCH SUMMONED A WITCHLING! 🔮')}
    if(e.attack<=0){e.attack=2.0;const a=Math.atan2(ey,ex);arena.projectiles.push({x:e.x,y:e.y,vx:Math.cos(a)*4.4,vy:Math.sin(a)*4.4,life:3.0,damage:e.atk*1.15,angle:a,owner:'enemy',kind:'fire'});burst(e.x,e.y,7,'hurt')}
  } else if(e.type==='witchling'){
-   if(d>90){e.x+=ex/d*e.speed*60*dt;e.y+=ey/d*e.speed*60*dt}else{e.attack-=dt;if(e.attack<=0){e.attack=1.8;hurtPlayer(e.atk)}}
+   const touch=e.r+22;
+   if(d>touch){e.x+=ex/d*e.speed*60*dt;e.y+=ey/d*e.speed*60*dt}else{hurtPlayer(e.atk)}
  } else if(e.type==='brute'){
    e.specialCd-=dt;
    if(e.jumpT>0){e.jumpT-=dt;e.x+=Math.cos(e.jumpA)*7.5*60*dt;e.y+=Math.sin(e.jumpA)*7.5*60*dt;if(e.jumpT<=0){if(Math.hypot(e.x-p.x,e.y-p.y)<90)hurtPlayer(e.atk*1.8);arena.shake=12;burst(e.x,e.y,28,'hurt');sfx('hurt')}}
    else if(d>contact){e.x+=ex/d*e.speed*60*dt;e.y+=ey/d*e.speed*60*dt}
    else {e.attack-=dt;if(e.attack<=0){e.attack=2.1;e.jumpT=.65;e.jumpA=Math.atan2(ey,ex);burst(e.x,e.y,12,'slash');toast('HEART BRUTE HEADBUTT! 💥')}}
  } else if(e.type==='guard'){
-   if(d>170){e.x+=ex/d*e.speed*60*dt;e.y+=ey/d*e.speed*60*dt}else{e.attack-=dt;if(e.attack<=0){e.attack=1.25;hurtPlayer(e.atk);burst(e.x,e.y,10,'slash')}}
+   const touch=e.r+22;
+   if(d>touch){e.x+=ex/d*e.speed*60*dt;e.y+=ey/d*e.speed*60*dt}else{hurtPlayer(e.atk);burst(e.x,e.y,10,'slash')}
  } else if(e.type==='mimic'){
    if(d>130){e.x+=ex/d*e.speed*60*dt;e.y+=ey/d*e.speed*60*dt}else{e.attack-=dt;if(e.attack<=0){e.attack=1.55;const a=Math.atan2(ey,ex);arena.projectiles.push({x:e.x,y:e.y,vx:Math.cos(a)*4.5,vy:Math.sin(a)*4.5,life:2.2,damage:e.atk*.9,angle:a,owner:'enemy'})}}
  } else if(e.type==='sentinel'){
@@ -937,9 +939,11 @@ function updateArena(dt){if(!arena.running)return;const p=arena.player,s=combatS
    if(e.chargeT>0){e.chargeT-=dt;e.x+=Math.cos(e.chargeA)*8.5*60*dt;e.y+=Math.sin(e.chargeA)*8.5*60*dt;if(e.chargeT<=0){if(Math.hypot(e.x-p.x,e.y-p.y)<105)hurtPlayer(e.atk*2.2);for(let j=-1;j<=1;j++){const a=e.chargeA+j*.35;arena.projectiles.push({x:e.x,y:e.y,vx:Math.cos(a)*4.8,vy:Math.sin(a)*4.8,life:2.2,damage:e.atk*.55,angle:a,owner:'enemy'})}burst(e.x,e.y,35,'death')}}
    else if(d>contact+8){e.x+=ex/d*e.speed*60*dt;e.y+=ey/d*e.speed*60*dt}
    else if(e.attack<=0){e.attack=1.0;hurtPlayer(e.atk*1.25);burst(e.x,e.y,16,'slash')}
- } else if(d>contact){
-   e.x+=ex/d*e.speed*60*dt;e.y+=ey/d*e.speed*60*dt;
- } else {e.attack-=dt;if(e.attack<=0){e.attack=e.type==='charger'?.48:e.type==='assassin'?.42:e.type==='berserker'?.36:e.type==='lancer'?.62:.78;hurtPlayer(e.atk)}}
+ } else {
+   const touch=e.r+22;
+   if(d>touch){e.x+=ex/d*e.speed*60*dt;e.y+=ey/d*e.speed*60*dt;}
+   else {hurtPlayer(e.atk)}
+ }
  e.hit=Math.max(0,e.hit-dt);
  e.x=Math.max(-60,Math.min(arena.w+60,e.x));e.y=Math.max(-60,Math.min(arena.h+60,e.y));
 }
@@ -947,7 +951,6 @@ updateProjectiles(dt);for(const q of arena.particles){q.x+=q.vx*60*dt;q.y+=q.vy*
 function drawArena(){const w=arena.w||800,h=arena.h||600;ac.clearRect(0,0,w,h);ac.save();if(arena.shake>0){ac.translate((Math.random()-.5)*arena.shake,(Math.random()-.5)*arena.shake);arena.shake*=.86;if(arena.shake<.2)arena.shake=0}const grad=ac.createRadialGradient(w*.5,h*.45,20,w*.5,h*.45,Math.max(w,h)*.75);grad.addColorStop(0,'#211323');grad.addColorStop(1,'#070a12');ac.fillStyle=grad;ac.fillRect(0,0,w,h);ac.strokeStyle='#ff9db51a';ac.lineWidth=1;for(let x=0;x<w;x+=55){ac.beginPath();ac.moveTo(x,0);ac.lineTo(x,h);ac.stroke()}for(let y=0;y<h;y+=55){ac.beginPath();ac.moveTo(0,y);ac.lineTo(w,y);ac.stroke()}for(let x=30;x<w;x+=110){ac.fillStyle='#ff8fab14';ac.beginPath();ac.arc(x,45,3,0,7);ac.fill();ac.beginPath();ac.arc(x+9,48,2,0,7);ac.fill()}for(const e of arena.enemies)drawEnemy(e);drawProjectiles();drawPlayer(arena.player);for(const q of arena.particles){ac.globalAlpha=Math.max(0,q.life/q.max);ac.fillStyle=q.kind==='death'?'#ff9db5':q.kind==='hurt'?'#fff':'#ffd2df';ac.beginPath();ac.arc(q.x,q.y,q.size,0,7);ac.fill()}ac.globalAlpha=1;coopDrawPlayers();for(const q of arena.slashes){ac.save();ac.translate(q.x,q.y);ac.rotate(q.angle);ac.globalAlpha=q.t/(q.maxT||.22);ac.strokeStyle='#fff0f5';ac.shadowColor='#ff6e94';ac.shadowBlur=18;ac.lineWidth=7;ac.beginPath();ac.arc(18,0,55,-1.0,.8);ac.stroke();ac.strokeStyle='#ff87a7';ac.lineWidth=3;ac.beginPath();ac.arc(18,0,62,-1.0,.8);ac.stroke();ac.restore()}ac.restore()}
 function drawPlayer(p){
  ac.save();ac.translate(p.x,p.y);
- const hitT=Math.max(0,p.hitT||0);if(hitT>0){const k=hitT/.30;ac.translate(-Math.cos(p.hitAngle||0)*5*k,-Math.sin(p.hitAngle||0)*5*k);ac.rotate(Math.sin(hitT*48)*.09);}
  if(p.downed){
    const prog=Math.max(0,Math.min(1,(p.reviveProgress||0)/2));
    ac.globalAlpha=.96;ac.fillStyle='rgba(80,255,150,.14)';ac.beginPath();ac.arc(0,0,44,0,Math.PI*2);ac.fill();
@@ -957,7 +960,6 @@ function drawPlayer(p){
    ac.globalAlpha=1;ac.fillStyle='#6dffad';ac.font='bold 11px Arial';ac.textAlign='center';ac.fillText(prog>0?'REVIVING '+Math.ceil(2-(p.reviveProgress||0))+'s':'DOWNED',0,-60);
    ac.restore();return;
  }
- if(hitT>0){ac.globalAlpha=.9;ac.fillStyle='#ff5d7f';ac.beginPath();ac.arc(0,-8,31*(1-hitT/.30*.25),0,Math.PI*2);ac.fill();ac.globalAlpha=.55;}
  if(p.inv>0&&Math.floor(p.inv*20)%2===0)ac.globalAlpha=.45;ac.fillStyle='#ffafc2';ac.shadowColor='#ff5f89';ac.shadowBlur=18;ac.beginPath();ac.arc(0,-20,11,0,7);ac.fill();ac.fillStyle='#f4d9df';ac.shadowBlur=0;ac.fillRect(-10,-8,20,30);ac.fillStyle='#7d3550';ac.fillRect(-10,22,7,19);ac.fillRect(3,22,7,19);ac.fillStyle='#160911';ac.fillRect(-28,-48,56,6);ac.fillStyle='#ff6f91';ac.fillRect(-28,-48,56*Math.max(0,p.hp/combatStats().maxHp),6);ac.strokeStyle='#ffd8e2';ac.lineWidth=1;ac.strokeRect(-28,-48,56,6);const a=Number.isFinite(p.angle)?p.angle:(Number.isFinite(p.attackAngle)?p.attackAngle:0);ac.save();ac.rotate(a);ac.strokeStyle='#f2b7c7';ac.lineWidth=5;ac.lineCap='round';ac.beginPath();ac.moveTo(5,-4);ac.lineTo(18,-1);ac.stroke();if(arenaState.activeWeaponType==='bow'){ac.strokeStyle='#d9a9bc';ac.lineWidth=3;ac.beginPath();ac.arc(27,0,20,-1.1,1.1);ac.stroke();ac.strokeStyle='#fff0f5';ac.lineWidth=2;ac.beginPath();ac.moveTo(7,0);ac.lineTo(48,0);ac.stroke()}else{ac.strokeStyle='#fff0f5';ac.lineWidth=4;ac.beginPath();ac.moveTo(7,0);ac.lineTo(48,0);ac.stroke();ac.strokeStyle='#ffb8c9';ac.lineWidth=2;ac.beginPath();ac.moveTo(43,0);ac.lineTo(52,0);ac.stroke()}ac.restore();ac.fillStyle='#ff6e95';ac.beginPath();ac.moveTo(-7,-25);ac.quadraticCurveTo(0,-35,7,-25);ac.fill();ac.restore()}
 function drawEnemy(e){
  ac.save();ac.translate(e.x,e.y);const pulse=Math.sin(performance.now()/170+e.x)*1.8;ac.globalAlpha=e.hit>0?.55:1;
@@ -1026,7 +1028,7 @@ function coopUrl(room){const proto=location.protocol==='https:'?'wss:':'ws:';ret
 function coopSetStatus(t){const el=$('coopStatus');if(el)el.textContent=t}
 function coopRenderPlayers(players){
   coopPeers={};
-  (players||[]).forEach(p=>{if(p.id!==coopId)coopPeers[p.id]={id:p.id,name:p.name,x:coopWorldX(p.x||600),y:coopWorldY(p.y||350),targetX:coopWorldX(p.x||600),targetY:coopWorldY(p.y||350),angle:p.angle||0,targetAngle:p.angle||0,hp:p.hp,maxHp:p.maxHp,downed:!!p.downed,reviveProgress:p.reviveProgress||0,slashT:0,hitT:0,hitAngle:0}});
+  (players||[]).forEach(p=>{if(p.id!==coopId)coopPeers[p.id]={id:p.id,name:p.name,x:coopWorldX(p.x||600),y:coopWorldY(p.y||350),targetX:coopWorldX(p.x||600),targetY:coopWorldY(p.y||350),angle:p.angle||0,targetAngle:p.angle||0,hp:p.hp,maxHp:p.maxHp,downed:!!p.downed,reviveProgress:p.reviveProgress||0,slashT:0}});
   const g=$('coopPlayers');if(g)g.innerHTML=(players||[]).map(p=>'<span class="coop-player">'+(p.id===coopId?'💗 ':'')+(p.name||'Player')+'</span>').join('');
   updateCoopLobby();
 }
@@ -1124,26 +1126,12 @@ function coopHandle(m){
   if(m.type==='enemyAttackFx'){
     const e=arena.enemies.find(x=>x.id===m.enemyId);
     const hp=coopScreenPoint(m.x,m.y);
-    const attackAngle=Number.isFinite(m.angle)?m.angle:0;
     if(e){
-      e.attackT=.24;
-      e.attackAngle=attackAngle;
+      e.attackT=.22;
+      e.attackAngle=Number.isFinite(m.angle)?m.angle:Math.atan2(hp.y-e.y,hp.x-e.x);
       e.targetX=hp.x;e.targetY=hp.y;
     }
-    if(m.targetId===coopId){
-      arena.player.hitT=.30;
-      arena.player.hitAngle=attackAngle;
-      arena.player.inv=Math.max(arena.player.inv||0,.30);
-      arena.shake=Math.max(arena.shake||0,10);
-      burst(arena.player.x,arena.player.y,14,'hurt');
-    }else if(m.targetId&&coopPeers[m.targetId]){
-      const tp=coopPeers[m.targetId];
-      tp.hitT=.30;tp.hitAngle=attackAngle;
-      burst(tp.x,tp.y,14,'hurt');
-    }else{
-      burst(hp.x,hp.y,14,'hurt');
-    }
-    burst(hp.x,hp.y,8,'slash');
+    burst(hp.x,hp.y,7,'slash');
     sfx('slash');
     return;
   }
@@ -1251,7 +1239,7 @@ function coopApplyState(m){
     m.players.forEach(p=>{
       if(p.id===coopId)return;
       const sx=coopWorldX(p.x),sy=coopWorldY(p.y);
-      let q=coopPeers[p.id]||(coopPeers[p.id]={id:p.id,name:p.name||'Player',x:sx,y:sy,targetX:sx,targetY:sy,angle:0,targetAngle:0,hp:p.hp,maxHp:p.maxHp,slashT:0,hitT:0,hitAngle:0});
+      let q=coopPeers[p.id]||(coopPeers[p.id]={id:p.id,name:p.name||'Player',x:sx,y:sy,targetX:sx,targetY:sy,angle:0,targetAngle:0,hp:p.hp,maxHp:p.maxHp,slashT:0});
       q.name=p.name||q.name;q.targetX=sx;q.targetY=sy;q.targetAngle=p.angle||0;q.weapon=p.weapon||q.weapon||'sword';q.skill=p.skill||q.skill||'';q.hp=p.hp;q.maxHp=p.maxHp;q.downed=!!p.downed;q.reviveProgress=p.reviveProgress||0;
     });
   }
@@ -1279,7 +1267,6 @@ function coopApplyState(m){
 }
 function coopDrawPlayers(){if(!coopSocket)return;for(const p of Object.values(coopPeers)){
   ac.save();ac.translate(p.x,p.y);
-  const remoteHitT=Math.max(0,p.hitT||0);if(remoteHitT>0){const k=remoteHitT/.30;ac.translate(-Math.cos(p.hitAngle||0)*5*k,-Math.sin(p.hitAngle||0)*5*k);ac.rotate(Math.sin(remoteHitT*48)*.09);ac.globalAlpha=.95;ac.fillStyle='#ff5d7f';ac.beginPath();ac.arc(0,-8,30*(1-remoteHitT/.30*.25),0,Math.PI*2);ac.fill();ac.globalAlpha=1;}
   if(p.downed){
     const prog=Math.max(0,Math.min(1,(p.reviveProgress||0)/2));
     ac.globalAlpha=.95;ac.fillStyle='rgba(80,255,150,.14)';ac.beginPath();ac.arc(0,0,42,0,Math.PI*2);ac.fill();
@@ -1322,7 +1309,7 @@ function coopClientVisualTick(dt){
     const ta=Number.isFinite(q.targetAngle)?q.targetAngle:(q.angle||0);
     let da=Math.atan2(Math.sin(ta-(q.angle||0)),Math.cos(ta-(q.angle||0)));
     q.angle=(q.angle||0)+da*(1-Math.exp(-dt*30));
-    q.slashT=Math.max(0,(q.slashT||0)-dt);q.hitT=Math.max(0,(q.hitT||0)-dt);
+    q.slashT=Math.max(0,(q.slashT||0)-dt);
   }
   for(const e of arena.enemies){
     if(Number.isFinite(e.targetX)){
@@ -1374,7 +1361,7 @@ function coopClientVisualTick(dt){
 function coopTick(){if(!coopSocket||coopSocket.readyState!==1)return;const p=arena.player,now=performance.now();if(now-coopLastNet>16){coopLastNet=now;const dx=(arena.keys.d||arena.keys.ArrowRight?1:0)-(arena.keys.a||arena.keys.ArrowLeft?1:0),dy=(arena.keys.s||arena.keys.ArrowDown?1:0)-(arena.keys.w||arena.keys.ArrowUp?1:0);coopInput={x:dx,y:dy};coopSend({type:'input',x:dx,y:dy,angle:p.angle||0})}}
 function showCoopStart(show){const el=$('coopStartOverlay');if(el)el.classList.toggle('hidden',!show);if(show)updateCoopLobby()}
 function updateCoopLobby(){const total=Object.keys(coopPeers).length+(coopId?1:0),st=$('coopStartStatus'),btn=$('coopStartBattle'),txt=$('coopStartText');if(st)st.textContent=coopServerPhase==='battle'?'⚔️ Battle running • '+total+' players':coopServerPhase==='upgrade'?'✨ Everyone is choosing an upgrade':'🟢 Server room • '+total+' player'+(total===1?'':'s');if(btn){btn.disabled=!coopSocket||coopSocket.readyState!==1||!(coopServerPhase==='lobby'||coopServerPhase==='gameover');btn.textContent=coopServerPhase==='gameover'?'↻ RESTART RUN':(coopServerPhase==='lobby'?'▶ START BATTLE':'⚔️ BATTLE RUNNING')}if(txt)txt.textContent='Cloudflare server controls the battle clock, enemies, waves and upgrades. No player is the host.'}
-function resetArenaRun(){arena.running=false;arena.wave=1;arena.spawned=0;arena.enemies=[];arena.projectiles=[];arena.particles=[];arena.slashes=[];resetWaveUpgrades();arena.player={x:0,y:0,targetX:0,targetY:0,hp:combatStats().maxHp,dir:1,angle:0,attackAngle:0,attackCd:0,slashT:0,hitT:0,hitAngle:0,inv:0,skillCd:0};resizeArena();arenaStats()}
+function resetArenaRun(){arena.running=false;arena.wave=1;arena.spawned=0;arena.enemies=[];arena.projectiles=[];arena.particles=[];arena.slashes=[];resetWaveUpgrades();arena.player={x:0,y:0,targetX:0,targetY:0,hp:combatStats().maxHp,dir:1,angle:0,attackAngle:0,attackCd:0,slashT:0,inv:0,skillCd:0};resizeArena();arenaStats()}
 function beginCoopBattle(announce=true){if(arenaModal.classList.contains('hidden'))arenaModal.classList.remove('hidden');$('coopModal').classList.add('hidden');showCoopStart(false);arena.running=true;initArenaAudio();arenaStats();arenaLog('⚔️ Cloudflare server is running the battle.');if(announce){sendProgressionSync();coopSend({type:'startRequest',stats:coopStats()})}}
 function coopStart(){coopStarted=false;coopServerPhase='lobby';coopServerStats=null;coopLastServerSeq=0;coopLastServerAt=0;coopServerX=0;coopServerY=0;clearTimeout(coopStartTimer);resetArenaRun();showCoopStart(true);updateCoopLobby();coopConnect()}
 $('lsaCoopBtn').onclick=()=>{coopOpenedFromRunning=!!arena.running;arena.running=false;$('coopModal').classList.remove('hidden');showCoopStart(false);coopSetStatus('Offline');updateCoopLobby()};

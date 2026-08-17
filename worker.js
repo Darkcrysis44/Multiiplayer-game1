@@ -3,6 +3,8 @@ const COOP_SPEED_MULT = 1.22;
 const TICK_MS = 16;       // 60 Hz authoritative simulation; client predicts locally at 60 FPS
 const STATE_MS = 16;      // 60 Hz snapshots for tighter multiplayer reconciliation
 const WIDTH = 1200, HEIGHT = 700;
+const PLAYER_HIT_RADIUS = 22;
+const MELEE_TYPES = new Set(['broken','charger','duelist','lancer','tank','splitter','guard','assassin','brute','berserker','lovebreaker']);
 const TYPES = {
   broken:[.55,1,1,21,'Broken Heart','Common'], charger:[.10,.8,1.8,19,'Heart Charger','Uncommon'],
   duelist:[.06,1.15,1.2,22,'Heart Duelist','Uncommon'], archer:[.06,.9,.72,20,'Cupid Archer','Uncommon'],
@@ -59,7 +61,7 @@ export class Room {
     const pair=new WebSocketPair(), client=pair[0], server=pair[1]; server.accept();
     const id=crypto.randomUUID();
     this.sockets.set(id,server);
-    this.players.set(id,{id,name:'Player',x:WIDTH/2,y:HEIGHT/2,hp:100,maxHp:100,atk:14,spd:3.2,armor:0,crit:.08,ix:0,iy:0,angle:0,weapon:'sword',lastAttack:0,skillCd:0,skill:'',downed:false,reviveProgress:0,level:1,rebirths:0,mult:1,passives:[]});
+    this.players.set(id,{id,name:'Player',x:WIDTH/2,y:HEIGHT/2,hp:100,maxHp:100,atk:14,spd:3.2,armor:0,crit:.08,ix:0,iy:0,angle:0,weapon:'sword',lastAttack:0,skillCd:0,skill:'',downed:false,reviveProgress:0,level:1,rebirths:0,mult:1,passives:[],contactInv:0});
     this.send(id,{type:'welcome',id,serverNow:Date.now(),phase:this.phase,wave:this.wave,state:this.snapshotFor(id),serverAuthoritative:true});
     this.broadcastPlayers(); this.ensureAlarm();
     const onMessage=e=>{try{this.message(id,JSON.parse(e.data))}catch{}};
@@ -268,7 +270,7 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     if(this.phase==='countdown' && now>=this.countdownAt){this.phase='battle';this.broadcast({type:'phase',phase:'battle',wave:this.wave,serverNow:now});}
     if(this.phase!=='battle')return;
     const dt=raw/1000;
-    for(const p of this.players.values()){p.skillCd=Math.max(0,(p.skillCd||0)-raw/1000);
+    for(const p of this.players.values()){p.skillCd=Math.max(0,(p.skillCd||0)-raw/1000);p.contactInv=Math.max(0,(p.contactInv||0)-raw/1000);
       if(p.downed){p.ix=0;p.iy=0;continue}
       const l=Math.hypot(p.ix,p.iy)||1;p.x=clamp(p.x+p.ix/l*p.spd*COOP_SPEED_MULT*60*dt,30,WIDTH-30);p.y=clamp(p.y+p.iy/l*p.spd*COOP_SPEED_MULT*60*dt,62,HEIGHT-30);
     }
@@ -379,23 +381,29 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       }
       let target=null,bd=Infinity;for(const p of this.players.values()){if(p.downed)continue;const d=dist(e,p);if(d<bd){bd=d;target=p}}
       if(!target)continue;
-      const dx=target.x-e.x,dy=target.y-e.y,d=Math.hypot(dx,dy)||1,contact=e.boss?52:Math.max(34,(e.r||20)+16);
+      const dx=target.x-e.x,dy=target.y-e.y,d=Math.hypot(dx,dy)||1;
+      // A melee enemy should physically reach the player's whole body, not an
+      // arbitrary point in front of the player. Treat both circles as hitboxes.
+      const contact=(e.r||21)+PLAYER_HIT_RADIUS;
       if(!e.dashT&&!e.chargeT&&d>contact){
-        // Drive the enemy directly toward the player's live hitbox. Snap to the
-        // contact radius when the next movement step would cross it, so the
-        // attack frame can never happen from a visibly offset position.
-        const step=e.speed*60*dt;
-        const nd=Math.max(contact,d-step);
-        e.x=target.x-dx/d*nd;e.y=target.y-dy/d*nd;
+        e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt;
+      }else if(MELEE_TYPES.has(e.type)||e.boss){
+        // No attack wind-up at contact: the hit happens on the first frame the
+        // enemy touches the player's hitbox. contactInv only prevents 60Hz
+        // frame-by-frame damage while still allowing immediate re-hits.
+        if(d<=contact && target.contactInv<=0){
+          target.contactInv=.38;
+          const a=Math.atan2(target.y-e.y,target.x-e.x);
+          const dmg=Math.max(1,e.atk-target.armor*.7);
+          this.broadcast({type:'enemyAttackFx',enemyId:e.id,targetId:target.id,x:target.x,y:target.y,angle:a,damage:dmg,serverNow:now});
+          target.hp=Math.max(0,target.hp-dmg);
+          if(target.hp<=0){target.hp=0;target.downed=true;target.reviveProgress=0;target.ix=0;target.iy=0;this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y})}
+        }
       }else{
         e.attack-=dt;
         if(e.attack<=0){
-          e.attack=e.boss?1.5:.9;
-          const a=Math.atan2(target.y-e.y,target.x-e.x);
-          // Keep the attacker physically aligned with the player's hitbox.
-          e.x=target.x-Math.cos(a)*contact;
-          e.y=target.y-Math.sin(a)*contact;
-          const dmg=Math.max(1,e.atk-target.armor*.7);
+          e.attack=.9;
+          const a=Math.atan2(target.y-e.y,target.x-e.x),dmg=Math.max(1,e.atk-target.armor*.7);
           this.broadcast({type:'enemyAttackFx',enemyId:e.id,targetId:target.id,x:target.x,y:target.y,angle:a,damage:dmg,serverNow:now});
           target.hp=Math.max(0,target.hp-dmg);
           if(target.hp<=0){target.hp=0;target.downed=true;target.reviveProgress=0;target.ix=0;target.iy=0;this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y})}
