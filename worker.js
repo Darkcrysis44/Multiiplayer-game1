@@ -266,7 +266,7 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     // second weapon geometry.
     if(weapon==='bow'){
       const arrowMult=clamp(Number(m.arrowMult)||1,1,3);
-      const origin=24; // center of the Solo bow/string line
+      const origin=50; // the Solo bow/string visual reaches x=50, so the arrow starts at the bow string
       const projectile={
         id:'a'+(++this.attackSeq),owner:p.id,
         x:attackX+Math.cos(angle)*origin,y:attackY+Math.sin(angle)*origin,
@@ -287,7 +287,7 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       const ex=pe?pe.x:e.x, ey=pe?pe.y:e.y;
       const dx=ex-attackX,dy=ey-attackY,dist=Math.hypot(dx,dy);
       // Include the enemy body radius so a sword touching the edge counts.
-      const reach=125+(Number(pe?.r)||Number(e.r)||20);
+      const reach=125; // exact Solo sword reach
       if(dist<reach){
         let da=Math.atan2(dy,dx)-angle;
         da=Math.atan2(Math.sin(da),Math.cos(da));
