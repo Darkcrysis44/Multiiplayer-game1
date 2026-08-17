@@ -379,18 +379,23 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       }
       let target=null,bd=Infinity;for(const p of this.players.values()){if(p.downed)continue;const d=dist(e,p);if(d<bd){bd=d;target=p}}
       if(!target)continue;
-      const dx=target.x-e.x,dy=target.y-e.y,d=Math.hypot(dx,dy)||1,contact=e.boss?48:24;
+      const dx=target.x-e.x,dy=target.y-e.y,d=Math.hypot(dx,dy)||1,contact=e.boss?52:Math.max(34,(e.r||20)+16);
       if(!e.dashT&&!e.chargeT&&d>contact){
-        // Always steer toward the live player hitbox, not a stale/offset point.
-        e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt;
+        // Drive the enemy directly toward the player's live hitbox. Snap to the
+        // contact radius when the next movement step would cross it, so the
+        // attack frame can never happen from a visibly offset position.
+        const step=e.speed*60*dt;
+        const nd=Math.max(contact,d-step);
+        e.x=target.x-dx/d*nd;e.y=target.y-dy/d*nd;
       }else{
         e.attack-=dt;
         if(e.attack<=0){
           e.attack=e.boss?1.5:.9;
           const a=Math.atan2(target.y-e.y,target.x-e.x);
+          // Keep the attacker physically aligned with the player's hitbox.
+          e.x=target.x-Math.cos(a)*contact;
+          e.y=target.y-Math.sin(a)*contact;
           const dmg=Math.max(1,e.atk-target.armor*.7);
-          // Solo-style contact hit: the enemy is already at the target hitbox
-          // and the damage is applied immediately on the attack frame.
           this.broadcast({type:'enemyAttackFx',enemyId:e.id,targetId:target.id,x:target.x,y:target.y,angle:a,damage:dmg,serverNow:now});
           target.hp=Math.max(0,target.hp-dmg);
           if(target.hp<=0){target.hp=0;target.downed=true;target.reviveProgress=0;target.ix=0;target.iy=0;this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y})}
