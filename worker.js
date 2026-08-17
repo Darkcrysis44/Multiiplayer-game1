@@ -75,7 +75,7 @@ export class Room {
     if(m.type==='progressSync' && m.progression){
       const pr=m.progression;
       const rev=clamp(Number(pr.progressRev)||0,0,1e9);
-      if(rev>=p.progressRev){
+      if(rev>p.progressRev){
         p.level=clamp(Number(pr.level)||p.level,1,9999);p.xp=clamp(Number(pr.xp)||0,0,1e12);p.rebirths=clamp(Number(pr.rebirths)||p.rebirths,0,9999);p.mult=clamp(Number(pr.mult)||p.mult,1,1000);
         p.progressRev=rev;
         this.send(id,{type:'progression',progression:this.progression(p)});this.broadcastState(true);
