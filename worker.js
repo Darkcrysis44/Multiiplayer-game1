@@ -228,7 +228,7 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
   }
   serverAttack(p,m){
     const now=Date.now();
-    if(now-p.lastAttack<300)return;
+    if(now-p.lastAttack<270)return;
     p.lastAttack=now;
     const weapon=m.weapon==='bow'?'bow':'sword';
     p.weapon=weapon;
@@ -248,20 +248,33 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       return;
     }
 
-    // EXACTLY mirror Solo's sword collision in slash():
-    // a finite blade capsule (92px segment, 13px blade radius) against the
-    // enemy's full body radius. This makes the multiplayer hit land on the
-    // same physical area that the visible Solo slash represents.
+    // EXACTLY mirror the visible Solo sword arc. The drawn slash is an
+    // annular sector centered on the player, with its 55px radius aligned to the sword tip,
+    // spanning -1.0..0.8 radians. Expand it by the enemy body radius so
+    // an enemy whose sprite/body is crossed by the blade cannot randomly
+    // miss because of a single-pixel center-point test.
     let hits=[];
     const ca=Math.cos(angle),sa=Math.sin(angle);
-    const reach=92,bladeRadius=13;
+    const arcCx=0,arcR=55,arcHalfW=5.5;
+    const attackX=Number.isFinite(Number(m.x))?Number(m.x):p.x;
+    const attackY=Number.isFinite(Number(m.y))?Number(m.y):p.y;
+    const origins=[[attackX,attackY],[p.x,p.y]];
     for(const e of this.enemies){
       if(!e||e.hp<=0)continue;
-      const vx=e.x-p.x,vy=e.y-p.y;
-      const t=Math.max(0,Math.min(1,(vx*ca+vy*sa)/reach));
-      const cx=p.x+ca*reach*t,cy=p.y+sa*reach*t;
       const er=Math.max(10,e.r||20);
-      if(Math.hypot(e.x-cx,e.y-cy)<=bladeRadius+er){
+      let hit=false;
+      for(const [ox,oy] of origins){
+        const dxw=e.x-ox,dyw=e.y-oy;
+        const lx=dxw*ca+dyw*sa;
+        const ly=-dxw*sa+dyw*ca;
+        const dx=lx-arcCx,dy=ly,rd=Math.hypot(dx,dy)||0.001;
+        const ad=Math.atan2(dy,dx);
+        const angularPad=Math.asin(Math.min(0.98,er/Math.max(rd,er)));
+        const radialHit=Math.abs(rd-arcR)<=arcHalfW+er;
+        const angleHit=ad>=(-1-angularPad)&&ad<=(0.8+angularPad);
+        if(radialHit&&angleHit){hit=true;break;}
+      }
+      if(hit){
         let dmg=clamp(Number(m.stats?.atk)||p.atk,1,10000);
         if(e.shieldT>0)dmg*=.35;
         if(Math.random()<p.crit)dmg*=2;
