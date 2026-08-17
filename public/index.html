@@ -832,16 +832,16 @@ function gainXp(amount){
 }
 function addArenaMoney(amount){addLove(amount);arenaStats();toast('+'+amount+' 💗')} 
 const bossDefs=[
- {name:'Heartbreaker',icon:'💔',hp:7,spd:.70,atk:3.4,skill:'dash'},
- {name:'Rose Colossus',icon:'🌹',hp:11,spd:.42,atk:4.5,skill:'slam'},
- {name:'Cupid Tyrant',icon:'🏹',hp:8,spd:.58,atk:3.2,skill:'volley'},
- {name:'Broken Duchess',icon:'👑',hp:6.5,spd:.82,atk:3.0,skill:'summon'},
- {name:'Grief Knight',icon:'🛡️',hp:9,spd:.62,atk:4.0,skill:'shield'},
- {name:'Passion Beast',icon:'🔥',hp:8.5,spd:1.05,atk:3.7,skill:'charge'},
- {name:'Toxic Lover',icon:'☠️',hp:7.5,spd:.72,atk:3.1,skill:'poison'},
- {name:'Shadow Heart',icon:'🌑',hp:6,spd:1.15,atk:3.0,skill:'blink'},
- {name:'Love Reaper',icon:'🗡️',hp:10,spd:.76,atk:4.2,skill:'scythe'},
- {name:'Final Heart',icon:'❤️‍🔥',hp:14,spd:.55,atk:5.0,skill:'nova'}
+ {name:'Heartbreaker',icon:'💔',hp:7,spd:.70,atk:3.4,skill:'dash',style:'heartbreaker'},
+ {name:'Rose Colossus',icon:'🌹',hp:11,spd:.42,atk:4.5,skill:'slam',style:'colossus'},
+ {name:'Cupid Tyrant',icon:'🏹',hp:8,spd:.58,atk:3.2,skill:'volley',style:'tyrant'},
+ {name:'Broken Duchess',icon:'👑',hp:6.5,spd:.82,atk:3.0,skill:'summon',style:'duchess'},
+ {name:'Grief Knight',icon:'🛡️',hp:9,spd:.62,atk:4.0,skill:'shield',style:'knight'},
+ {name:'Passion Beast',icon:'🔥',hp:8.5,spd:1.05,atk:3.7,skill:'charge',style:'beast'},
+ {name:'Toxic Lover',icon:'☠️',hp:7.5,spd:.72,atk:3.1,skill:'poison',style:'toxic'},
+ {name:'Shadow Heart',icon:'🌑',hp:6,spd:1.15,atk:3.0,skill:'blink',style:'shadow'},
+ {name:'Love Reaper',icon:'🗡️',hp:10,spd:.76,atk:4.2,skill:'scythe',style:'reaper'},
+ {name:'Final Heart',icon:'❤️‍🔥',hp:14,spd:.55,atk:5.0,skill:'nova',style:'final'}
 ];
 function spawnEnemy(forceBoss=false){
  const side=Math.floor(Math.random()*4);let x,y;
@@ -956,7 +956,7 @@ function drawPlayer(p){
    ac.globalAlpha=1;ac.fillStyle='#6dffad';ac.font='bold 11px Arial';ac.textAlign='center';ac.fillText(prog>0?'REVIVING '+Math.ceil(2-(p.reviveProgress||0))+'s':'DOWNED',0,-60);
    ac.restore();return;
  }
- if(p.inv>0&&Math.floor(p.inv*20)%2===0)ac.globalAlpha=.45;ac.fillStyle='#ffafc2';ac.shadowColor='#ff5f89';ac.shadowBlur=18;ac.beginPath();ac.arc(0,-20,11,0,7);ac.fill();ac.fillStyle='#f4d9df';ac.shadowBlur=0;ac.fillRect(-10,-8,20,30);ac.fillStyle='#7d3550';ac.fillRect(-10,22,7,19);ac.fillRect(3,22,7,19);ac.fillStyle='#160911';ac.fillRect(-28,-48,56,6);ac.fillStyle='#ff6f91';ac.fillRect(-28,-48,56*Math.max(0,p.hp/combatStats().maxHp),6);ac.strokeStyle='#ffd8e2';ac.lineWidth=1;ac.strokeRect(-28,-48,56,6);const a=(p.slashT>0&&Number.isFinite(p.attackAngle))?p.attackAngle:p.angle;ac.save();ac.rotate(a);ac.strokeStyle='#f2b7c7';ac.lineWidth=5;ac.lineCap='round';ac.beginPath();ac.moveTo(5,-4);ac.lineTo(18,-1);ac.stroke();if(arenaState.activeWeaponType==='bow'){ac.strokeStyle='#d9a9bc';ac.lineWidth=3;ac.beginPath();ac.arc(27,0,20,-1.1,1.1);ac.stroke();ac.strokeStyle='#fff0f5';ac.lineWidth=2;ac.beginPath();ac.moveTo(7,0);ac.lineTo(48,0);ac.stroke()}else{ac.strokeStyle='#fff0f5';ac.lineWidth=4;ac.beginPath();ac.moveTo(7,0);ac.lineTo(48,0);ac.stroke();ac.strokeStyle='#ffb8c9';ac.lineWidth=2;ac.beginPath();ac.moveTo(43,0);ac.lineTo(52,0);ac.stroke()}ac.restore();ac.fillStyle='#ff6e95';ac.beginPath();ac.moveTo(-7,-25);ac.quadraticCurveTo(0,-35,7,-25);ac.fill();ac.restore()}
+ if(p.inv>0&&Math.floor(p.inv*20)%2===0)ac.globalAlpha=.45;ac.fillStyle='#ffafc2';ac.shadowColor='#ff5f89';ac.shadowBlur=18;ac.beginPath();ac.arc(0,-20,11,0,7);ac.fill();ac.fillStyle='#f4d9df';ac.shadowBlur=0;ac.fillRect(-10,-8,20,30);ac.fillStyle='#7d3550';ac.fillRect(-10,22,7,19);ac.fillRect(3,22,7,19);ac.fillStyle='#160911';ac.fillRect(-28,-48,56,6);ac.fillStyle='#ff6f91';ac.fillRect(-28,-48,56*Math.max(0,p.hp/combatStats().maxHp),6);ac.strokeStyle='#ffd8e2';ac.lineWidth=1;ac.strokeRect(-28,-48,56,6);const a=Number.isFinite(p.angle)?p.angle:(Number.isFinite(p.attackAngle)?p.attackAngle:0);ac.save();ac.rotate(a);ac.strokeStyle='#f2b7c7';ac.lineWidth=5;ac.lineCap='round';ac.beginPath();ac.moveTo(5,-4);ac.lineTo(18,-1);ac.stroke();if(arenaState.activeWeaponType==='bow'){ac.strokeStyle='#d9a9bc';ac.lineWidth=3;ac.beginPath();ac.arc(27,0,20,-1.1,1.1);ac.stroke();ac.strokeStyle='#fff0f5';ac.lineWidth=2;ac.beginPath();ac.moveTo(7,0);ac.lineTo(48,0);ac.stroke()}else{ac.strokeStyle='#fff0f5';ac.lineWidth=4;ac.beginPath();ac.moveTo(7,0);ac.lineTo(48,0);ac.stroke();ac.strokeStyle='#ffb8c9';ac.lineWidth=2;ac.beginPath();ac.moveTo(43,0);ac.lineTo(52,0);ac.stroke()}ac.restore();ac.fillStyle='#ff6e95';ac.beginPath();ac.moveTo(-7,-25);ac.quadraticCurveTo(0,-35,7,-25);ac.fill();ac.restore()}
 function drawEnemy(e){
  ac.save();ac.translate(e.x,e.y);const pulse=Math.sin(performance.now()/170+e.x)*1.8;ac.globalAlpha=e.hit>0?.55:1;
  const boss=e.boss;let body='#7f243d',head='#e45b78',glow='#ff4d73';
@@ -964,11 +964,31 @@ function drawEnemy(e){
  if(e.type==='archer'){body='#31536b';head='#6fa7d0';glow='#6fb8ff'} if(e.type==='mage'){body='#4a2868';head='#b47cff';glow='#b47cff'}
  if(e.type==='assassin'){body='#21182c';head='#9d6aff';glow='#a46bff'} if(e.type==='lovebreaker'){body='#4b1524';head='#ff4f69';glow='#ff3156'} if(e.type==='brute'){body='#6b3340';head='#e8876e';glow='#ff876d'}
  if(e.type==='splitter'){body='#59354b';head='#d16b9d';glow='#ff8cc0'} if(e.type==='lancer'){body='#4b355b';head='#d99bff';glow='#d58cff'} if(e.type==='witch'){body='#34254d';head='#aa78e8';glow='#b57cff'} if(e.type==='berserker'){body='#6f1f2d';head='#f06b5f';glow='#ff6b62'} if(e.type==='sentinel'){body='#3d4c58';head='#8bb7c9';glow='#6fd7ff'} if(e.type==='guard'){body='#4b3a3f';head='#f0a5bb';glow='#ff9ebc'} if(e.type==='mimic'){body='#4b3046';head='#d98ab4';glow='#ff86b7'} if(e.type==='witchling'){body='#35243e';head='#b77bd6';glow='#c48cff'}
- if(boss){body='#57204d';head='#e08ac7';glow='#ffbd55'}
- ac.shadowColor=glow;ac.shadowBlur=boss?30:16;ac.fillStyle=body;ac.beginPath();ac.arc(0,boss?-28:-18,(boss?20:11)+pulse*.15,0,7);ac.fill();
- ac.shadowBlur=0;ac.fillStyle=head;ac.fillRect(boss?-20:-12,boss?-5:-7,boss?40:24,boss?42:29);
- ac.fillStyle='#4b1628';ac.fillRect(boss?-15:-10,boss?37:22,10,boss?27:18);ac.fillRect(boss?5:3,boss?37:22,10,boss?27:18);
- ac.strokeStyle='#ff9eb4';ac.lineWidth=boss?3:2;ac.beginPath();ac.moveTo(boss?-15:-9,boss?-8:-10);ac.lineTo(boss?15:9,boss?10:10);ac.moveTo(boss?15:9,boss?-8:-10);ac.lineTo(boss?-15:-9,boss?10:10);ac.stroke();
+ if(boss){
+   const st=e.bossDef?.style||'heartbreaker';
+   const bossPalette={heartbreaker:['#5b1835','#ff5f8f','#ff2f70'],colossus:['#432b5f','#b27ae8','#d18cff'],tyrant:['#243b63','#63a9ff','#79c8ff'],duchess:['#5a263f','#e98fb6','#ff9fc8'],knight:['#273746','#9eb7c9','#d6f0ff'],beast:['#63231b','#ff704f','#ffb04f'],toxic:['#243c2d','#71c96b','#b8ff74'],shadow:['#17152b','#6656b8','#9a7cff'],reaper:['#24242d','#c6c2d8','#f4e8ff'],final:['#641b24','#ff6675','#ffd36b']}[st]||['#57204d','#e08ac7','#ffbd55'];
+   body=bossPalette[0];head=bossPalette[1];glow=bossPalette[2];
+   ac.shadowColor=glow;ac.shadowBlur=32;
+   ac.fillStyle=body;
+   if(st==='colossus'){ac.beginPath();ac.moveTo(-30,25);ac.lineTo(-24,-35);ac.lineTo(-8,-52);ac.lineTo(0,-36);ac.lineTo(8,-52);ac.lineTo(24,-35);ac.lineTo(30,25);ac.closePath();ac.fill();ac.fillStyle=head;ac.fillRect(-25,-8,50,42);}
+   else if(st==='tyrant'){ac.beginPath();ac.arc(0,-18,25,0,Math.PI*2);ac.fill();ac.fillStyle=head;ac.fillRect(-20,-2,40,38);ac.strokeStyle=glow;ac.lineWidth=5;ac.beginPath();ac.moveTo(-24,-34);ac.lineTo(0,-48);ac.lineTo(24,-34);ac.stroke();}
+   else if(st==='duchess'){ac.beginPath();ac.moveTo(-27,-34);ac.lineTo(-12,-52);ac.lineTo(0,-38);ac.lineTo(12,-52);ac.lineTo(27,-34);ac.lineTo(22,30);ac.lineTo(-22,30);ac.closePath();ac.fill();ac.fillStyle=head;ac.beginPath();ac.arc(0,-18,21,0,Math.PI*2);ac.fill();}
+   else if(st==='knight'){ac.fillRect(-28,-20,56,48);ac.fillStyle=head;ac.fillRect(-20,-28,40,38);ac.strokeStyle=glow;ac.lineWidth=6;ac.strokeRect(-28,-20,56,48);ac.beginPath();ac.moveTo(-32,8);ac.lineTo(-52,18);ac.moveTo(32,8);ac.lineTo(52,18);ac.stroke();}
+   else if(st==='beast'){ac.beginPath();ac.moveTo(-30,28);ac.lineTo(-38,-15);ac.lineTo(-18,-45);ac.lineTo(0,-28);ac.lineTo(18,-45);ac.lineTo(38,-15);ac.lineTo(30,28);ac.closePath();ac.fill();ac.fillStyle=head;ac.beginPath();ac.arc(0,-8,22,0,Math.PI*2);ac.fill();}
+   else if(st==='toxic'){ac.beginPath();ac.arc(0,0,31,0,Math.PI*2);ac.fill();ac.fillStyle=head;ac.beginPath();ac.arc(0,-12,21,0,Math.PI*2);ac.fill();ac.strokeStyle=glow;ac.lineWidth=4;ac.beginPath();ac.arc(0,-8,35,0,Math.PI*2);ac.stroke();}
+   else if(st==='shadow'){ac.beginPath();ac.moveTo(0,-50);ac.lineTo(35,10);ac.lineTo(0,40);ac.lineTo(-35,10);ac.closePath();ac.fill();ac.fillStyle=head;ac.beginPath();ac.arc(0,-8,18,0,Math.PI*2);ac.fill();}
+   else if(st==='reaper'){ac.fillRect(-18,-8,36,44);ac.fillStyle=head;ac.beginPath();ac.arc(0,-24,22,0,Math.PI*2);ac.fill();ac.strokeStyle=glow;ac.lineWidth=6;ac.beginPath();ac.arc(30,-10,28,-1.2,1.2);ac.stroke();}
+   else if(st==='final'){ac.beginPath();ac.moveTo(0,38);ac.bezierCurveTo(-48,4,-38,-40,0,-20);ac.bezierCurveTo(38,-40,48,4,0,38);ac.fill();ac.fillStyle=head;ac.beginPath();ac.arc(0,-10,24,0,Math.PI*2);ac.fill();ac.strokeStyle=glow;ac.lineWidth=5;ac.beginPath();ac.arc(0,0,48,0,Math.PI*2);ac.stroke();}
+   else {ac.beginPath();ac.arc(0,-22,24,0,Math.PI*2);ac.fill();ac.fillStyle=head;ac.fillRect(-22,-5,44,40);ac.strokeStyle=glow;ac.lineWidth=4;ac.beginPath();ac.moveTo(-28,-32);ac.lineTo(0,-55);ac.lineTo(28,-32);ac.stroke();}
+   ac.shadowBlur=0;
+   if(st!=='colossus'&&st!=='duchess'&&st!=='final'){ac.fillStyle='#4b1628';ac.fillRect(-14,32,10,25);ac.fillRect(4,32,10,25);}
+   ac.fillStyle='#ffeff5';ac.beginPath();ac.arc(-8,-16,3,0,Math.PI*2);ac.arc(8,-16,3,0,Math.PI*2);ac.fill();
+ } else {
+   ac.shadowColor=glow;ac.shadowBlur=16;ac.fillStyle=body;ac.beginPath();ac.arc(0,-18,11+pulse*.15,0,7);ac.fill();
+   ac.shadowBlur=0;ac.fillStyle=head;ac.fillRect(-12,-7,24,29);
+   ac.fillStyle='#4b1628';ac.fillRect(-10,22,8,18);ac.fillRect(2,22,8,18);
+   ac.strokeStyle='#ff9eb4';ac.lineWidth=2;ac.beginPath();ac.moveTo(-9,-10);ac.lineTo(9,10);ac.moveTo(9,-10);ac.lineTo(-9,10);ac.stroke();
+ }
  if(e.type==='charger'||e.type==='brute'){ac.fillStyle='#ffe0e9';for(const sg of [-1,1]){ac.beginPath();ac.moveTo(sg*10,-12);ac.lineTo(sg*28,-27);ac.lineTo(sg*7,-19);ac.fill()}}
  if(e.type==='archer'){ac.strokeStyle='#d7b0c0';ac.lineWidth=3;ac.beginPath();ac.arc(0,2,18,-1.1,1.1);ac.stroke();ac.strokeStyle='#ffd8e2';ac.beginPath();ac.moveTo(-16,-12);ac.lineTo(16,16);ac.stroke()}
  if(e.type==='mage'){ac.strokeStyle='#d6a9ff';ac.lineWidth=3;ac.beginPath();ac.arc(0,-4,18,0,7);ac.stroke();ac.fillStyle='#f0cfff';ac.beginPath();ac.arc(0,-4,6,0,7);ac.fill()}
@@ -1257,15 +1277,15 @@ function coopClientVisualTick(dt){
   p.y=Math.max(62,Math.min(arena.h-30,p.y));
 
   for(const q of Object.values(coopPeers)){
-    const k=Math.min(1,dt*18);q.x+=(q.targetX-q.x)*k;q.y+=(q.targetY-q.y)*k;
+    const k=1-Math.exp(-dt*22);q.x+=(q.targetX-q.x)*k;q.y+=(q.targetY-q.y)*k;
     const ta=Number.isFinite(q.targetAngle)?q.targetAngle:(q.angle||0);
     let da=Math.atan2(Math.sin(ta-(q.angle||0)),Math.cos(ta-(q.angle||0)));
-    q.angle=(q.angle||0)+da*Math.min(1,dt*24);
+    q.angle=(q.angle||0)+da*(1-Math.exp(-dt*30));
     q.slashT=Math.max(0,(q.slashT||0)-dt);
   }
   for(const e of arena.enemies){
     if(Number.isFinite(e.targetX)){
-      const k=Math.min(1,dt*18);
+      const k=1-Math.exp(-dt*24);
       e.x+=(e.targetX-e.x)*k;e.y+=(e.targetY-e.y)*k;
     }
     e.hit=Math.max(0,(e.hit||0)-dt);
@@ -1281,11 +1301,9 @@ function coopClientVisualTick(dt){
     // around with ordinary network corrections. The local simulation owns the
     // feel of movement just like solo mode; the server only corrects a real
     // divergence (teleport/reset/collision) instead of producing drift.
-    if(error>150){
-      p.x=coopServerX;p.y=coopServerY;
-    }else if(!moving && error>10){
-      const correction=Math.min(1,dt*10);
-      p.x+=ex*correction;p.y+=ey*correction;
+    if(error>110){
+      const snap=error>220?1:(1-Math.exp(-dt*14));
+      p.x+=ex*snap;p.y+=ey*snap;
     }
     p.x=Math.max(30,Math.min(arena.w-30,p.x));
     p.y=Math.max(62,Math.min(arena.h-30,p.y));
@@ -1333,6 +1351,7 @@ slash=function(angle){
     coopLocalAttackAt=attackNow;
     arena.player.angle=angle;
     arena.player.attackAngle=angle;
+    arena.player.angle=angle;
     arena.player.attackCd=.5;
     const weapon=arenaState.activeWeaponType==='bow'?'bow':'sword';
     arena.player.weapon=weapon;
