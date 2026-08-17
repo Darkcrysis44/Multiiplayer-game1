@@ -131,7 +131,7 @@ export class Room {
       hp*=bossDef.hp;spd*=bossDef.spd;atk*=bossDef.atk;r=44;
     }else{const t=TYPES[type]||TYPES.broken;hp*=t[1];spd*=t[2];r=t[3];if(type==='charger')atk*=1.15;if(type==='tank')atk*=1.35;if(type==='duelist')atk*=1.65;if(type==='assassin')atk*=2;if(type==='brute')atk*=1.7;if(type==='lovebreaker')atk*=3;if(type==='berserker')atk*=2.35;if(type==='lancer')atk*=1.9;if(type==='witch')atk*=1.45}
     this.enemies.push({id:'e'+this.nextEnemy++,x,y,hp,maxHp:hp,r,speed:spd,atk,hit:0,attack:.7+Math.random(),type,boss:type==='boss',bossIndex:type==='boss'?Math.floor(this.wave/5)-1:-1,bossDef:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length]:null,
-attackT:0,attackAngle:0,touchingTarget:null,
+attackT:0,attackAngle:0,
 name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:(TYPES[type]?.[4]||'Broken Heart'),rarity:type==='boss'?'Legendary':(TYPES[type]?.[5]||'Common')});this.spawned++;
   }
   xpNeed(level){return Math.floor(100*Math.pow(1.12,Math.max(0,level-1)))}
@@ -233,9 +233,8 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     // Client prediction can be a few frames ahead of the authoritative player.
     // Use the reported attack origin when it is close enough to the server position,
     // so a visually correct swing is not rejected by a tiny prediction offset.
-    let attackX=p.x,attackY=p.y;
-    // Never trust a client-side attack position for melee collision; the
-    // authoritative player position is the single source of truth.
+    const ox=Number(m.x),oy=Number(m.y);let attackX=p.x,attackY=p.y;
+    if(Number.isFinite(ox)&&Number.isFinite(oy)&&Math.hypot(ox-p.x,oy-p.y)<=90){attackX=clamp(ox,30,WIDTH-30);attackY=clamp(oy,62,HEIGHT-30)}
     if(weapon==='bow'){
       const projectile={
         id:'a'+(++this.attackSeq),owner:p.id,x:attackX+Math.cos(angle)*43,y:attackY+Math.sin(angle)*43,
@@ -246,37 +245,23 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       this.broadcast({type:'fx',kind:'projectile',projectile:{id:projectile.id,owner:p.id,x:projectile.x,y:projectile.y,vx:projectile.vx,vy:projectile.vy,angle,weapon:'bow'},serverNow:now});
       return;
     }
-    // IMPORTANT: multiplayer melee uses the exact same collision geometry as Solo.
-    // Solo tests a 92px blade segment with a 13px blade radius against the enemy
-    // body radius. Use the attack packet's current visual player position when it
-    // is close to the authoritative position; this removes prediction/network
-    // drift from the melee origin without allowing arbitrary teleports.
-    const reportedX=Number(m.x),reportedY=Number(m.y);
-    if(Number.isFinite(reportedX)&&Number.isFinite(reportedY)){
-      const reportDelta=Math.hypot(reportedX-p.x,reportedY-p.y);
-      if(reportDelta<=140){attackX=reportedX;attackY=reportedY;}
-    }
-    let best=null,bestDist=Infinity;
-    const reach=92,bladeRadius=13,ca=Math.cos(angle),sa=Math.sin(angle);
+    let best=null,bestAlong=Infinity;
+    const maxRange=138,hitWidth=62,ca=Math.cos(angle),sa=Math.sin(angle);
     for(const e of this.enemies){
-      const vx=e.x-attackX,vy=e.y-attackY;
-      const t=Math.max(0,Math.min(1,(vx*ca+vy*sa)/reach));
-      const cx=attackX+ca*reach*t,cy=attackY+sa*reach*t;
-      const er=Math.max(10,e.r||20);
-      const d=Math.hypot(e.x-cx,e.y-cy);
-      if(d<=bladeRadius+er && d<bestDist){best=e;bestDist=d}
+      const rx=e.x-attackX,ry=e.y-attackY,along=rx*ca+ry*sa;
+      if(along<0||along>maxRange)continue;
+      const side=Math.abs(-rx*sa+ry*ca),radius=(e.r||20)+hitWidth;
+      if(side>radius)continue;
+      if(along<bestAlong){best=e;bestAlong=along}
     }
-    const endX=attackX+ca*reach,endY=attackY+sa*reach;
-    let hitX=endX,hitY=endY;
+    let hitX=attackX+ca*maxRange,hitY=attackY+sa*maxRange;
     if(best){
       hitX=best.x;hitY=best.y;
-      let dmg=clamp(Number(m.stats?.atk)||p.atk,1,10000);
-      if(best.shieldT>0)dmg*=.35;
-      if(Math.random()<p.crit)dmg*=2;
-      best.hp-=dmg;best.hit=.14;
-      if(best.hp<=0)this.killEnemy(best,p.id);
+      let dmg=clamp(Number(m.stats?.atk)||p.atk,1,10000);if(best.shieldT>0)dmg*=.35;if(Math.random()<p.crit)dmg*=2;
+      best.hp-=dmg;best.hit=.12;
+      if(best.hp<=0){this.killEnemy(best,p.id);}
     }
-    this.broadcast({type:'fx',kind:'attack',attackId:++this.attackSeq,from:p.id,x:attackX,y:attackY,angle,weapon:'sword',hit:!!best,hitX,hitY,serverNow:now});
+    this.broadcast({type:'fx',kind:'attack',attackId:++this.attackSeq,from:p.id,x:p.x,y:p.y,angle,weapon:'sword',hit:!!best,hitX,hitY,serverNow:now});
   }
   tick(now){
     const raw=Math.max(0,Math.min(250,now-this.lastTick));this.lastTick=now;
@@ -392,43 +377,29 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
         if(e.dashT>0){e.dashT-=dt;e.x+=Math.cos(e.dashA)*7*60*dt;e.y+=Math.sin(e.dashA)*7*60*dt}
         else if(e.chargeT>0){e.chargeT-=dt;e.x+=Math.cos(e.chargeA)*8*60*dt;e.y+=Math.sin(e.chargeA)*8*60*dt}
       }
-      let target=null,bd=Infinity;
-      for(const p of this.players.values()){
-        if(p.downed)continue;
-        const d=dist(e,p);
-        if(d<bd){bd=d;target=p}
-      }
+      let target=null,bd=Infinity;for(const p of this.players.values()){if(p.downed)continue;const d=dist(e,p);if(d<bd){bd=d;target=p}}
       if(!target)continue;
-
-      // Rounded body hitbox: melee AI seeks the nearest point on the player's
-      // body rectangle, so it can physically contact the sides/arms/legs.
-      const halfW=25,halfH=34;
-      const nx=clamp(e.x,target.x-halfW,target.x+halfW);
-      const ny=clamp(e.y,target.y-halfH,target.y+halfH);
-      const dx=nx-e.x,dy=ny-e.y,d=Math.hypot(dx,dy)||1;
-      const enemyR=Math.max(10,e.r||20);
-      const contact=enemyR+2;
+      const dx=target.x-e.x,dy=target.y-e.y,d=Math.hypot(dx,dy)||1,contact=e.boss?52:Math.max(34,(e.r||20)+16);
       if(!e.dashT&&!e.chargeT&&d>contact){
-        e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt;
-        e.touchingTarget=null;
-        e.meleeHitCd=0;
-      }else if(!e.dashT&&!e.chargeT){
-        // Once a melee enemy overlaps the player's body, keep attacking while
-        // overlapped. The old touchingTarget flag only allowed one hit and then
-        // stopped forever until the enemy separated.
-        e.touchingTarget=target.id;
-        e.meleeHitCd=Math.max(0,(e.meleeHitCd||0)-dt);
-        if(e.meleeHitCd<=0){
-          e.meleeHitCd=.24;
+        // Drive the enemy directly toward the player's live hitbox. Snap to the
+        // contact radius when the next movement step would cross it, so the
+        // attack frame can never happen from a visibly offset position.
+        const step=e.speed*60*dt;
+        const nd=Math.max(contact,d-step);
+        e.x=target.x-dx/d*nd;e.y=target.y-dy/d*nd;
+      }else{
+        e.attack-=dt;
+        if(e.attack<=0){
+          e.attack=e.boss?1.5:.9;
           const a=Math.atan2(target.y-e.y,target.x-e.x);
+          // Keep the attacker physically aligned with the player's hitbox.
+          e.x=target.x-Math.cos(a)*contact;
+          e.y=target.y-Math.sin(a)*contact;
           const dmg=Math.max(1,e.atk-target.armor*.7);
-          this.broadcast({type:'enemyAttackFx',enemyId:e.id,targetId:target.id,x:nx,y:ny,angle:a,damage:dmg,serverNow:now});
+          this.broadcast({type:'enemyAttackFx',enemyId:e.id,targetId:target.id,x:target.x,y:target.y,angle:a,damage:dmg,serverNow:now});
           target.hp=Math.max(0,target.hp-dmg);
           if(target.hp<=0){target.hp=0;target.downed=true;target.reviveProgress=0;target.ix=0;target.iy=0;this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y})}
         }
-      }else{
-        e.touchingTarget=null;
-        e.meleeHitCd=0;
       }
       e.x=clamp(e.x,-60,WIDTH+60);e.y=clamp(e.y,-60,HEIGHT+60);e.hit=Math.max(0,e.hit-dt);
     }
