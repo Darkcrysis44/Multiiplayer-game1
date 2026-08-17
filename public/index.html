@@ -1209,8 +1209,10 @@ function coopHandle(m){
         burst(ap.x+Math.cos(a)*18,ap.y+Math.sin(a)*18,3,'arrow');
         sfx('bow');
       }else{
+        // Remote slash uses the exact same origin, angle and 0.22s lifetime
+        // as Solo. Server collision uses the matching 92px x 13px blade capsule.
         arena.slashes=arena.slashes.filter(q=>!q.remote || Math.hypot((q.x||0)-ap.x,(q.y||0)-ap.y)>2);
-        arena.slashes.push({x:ap.x,y:ap.y,angle:a,t:.20,maxT:.20,remote:true});
+        arena.slashes.push({x:ap.x,y:ap.y,angle:a,t:.22,maxT:.22,remote:true});
         burst(ap.x+Math.cos(a)*35,ap.y+Math.sin(a)*35,5,'slash');
         sfx('slash');
       }
@@ -1408,9 +1410,9 @@ slash=function(angle){
     }else{
       // One clean local swing per attack. Remove a previous local swing so
       // rapid click/key/touch events cannot visually stack two slashes.
-      arena.player.slashT=.20;
+      arena.player.slashT=.22;
       arena.slashes=arena.slashes.filter(q=>q.remote);
-      arena.slashes.push({x:arena.player.x,y:arena.player.y,angle,t:.20,maxT:.20,remote:false});
+      arena.slashes.push({x:arena.player.x,y:arena.player.y,angle,t:.22,maxT:.22,remote:false});
       burst(arena.player.x+Math.cos(angle)*35,arena.player.y+Math.sin(angle)*35,5,'slash');
       sfx('slash');
     }

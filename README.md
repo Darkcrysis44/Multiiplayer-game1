@@ -30,3 +30,9 @@ Multiplayer reward behavior:
 - Client attack coordinates are not trusted for melee collision; the server uses authoritative player position.
 - Solo sword collision uses the same blade capsule geometry as multiplayer.
 - Solo melee enemy contact uses the same rounded body-hitbox approach.
+
+
+## v20 exact Solo sword feel
+- Multiplayer sword collision now uses the exact same finite blade capsule as Solo: 92px reach with a 13px blade radius, tested against each enemy's full body radius.
+- Multiplayer local and remote sword slash FX use the same 0.22s slash timing as Solo.
+- The server remains authoritative for damage, while the visible slash and its hit area are now aligned.

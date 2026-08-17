@@ -248,17 +248,20 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       return;
     }
 
-    // Multiplayer sword hit detection intentionally mirrors Solo's working
-    // slash() geometry: a finite 105px reach and a 1.0 radian forward cone.
-    // No extra capsule, reconciliation radius, or client position is used.
+    // EXACTLY mirror Solo's sword collision in slash():
+    // a finite blade capsule (92px segment, 13px blade radius) against the
+    // enemy's full body radius. This makes the multiplayer hit land on the
+    // same physical area that the visible Solo slash represents.
     let hits=[];
+    const ca=Math.cos(angle),sa=Math.sin(angle);
+    const reach=92,bladeRadius=13;
     for(const e of this.enemies){
       if(!e||e.hp<=0)continue;
-      const dx=e.x-p.x,dy=e.y-p.y;
-      const dd=Math.hypot(dx,dy);
-      let da=Math.atan2(dy,dx)-angle;
-      da=Math.atan2(Math.sin(da),Math.cos(da));
-      if(dd<105&&Math.abs(da)<1.0){
+      const vx=e.x-p.x,vy=e.y-p.y;
+      const t=Math.max(0,Math.min(1,(vx*ca+vy*sa)/reach));
+      const cx=p.x+ca*reach*t,cy=p.y+sa*reach*t;
+      const er=Math.max(10,e.r||20);
+      if(Math.hypot(e.x-cx,e.y-cy)<=bladeRadius+er){
         let dmg=clamp(Number(m.stats?.atk)||p.atk,1,10000);
         if(e.shieldT>0)dmg*=.35;
         if(Math.random()<p.crit)dmg*=2;
