@@ -1214,35 +1214,64 @@ function coopDrawPlayers(){if(!coopSocket)return;for(const p of Object.values(co
   }
   ac.restore()}}
 function coopClientVisualTick(dt){
-  for(const p of Object.values(coopPeers)){
-    const k=Math.min(1,dt*18);p.x+=(p.targetX-p.x)*k;p.y+=(p.targetY-p.y)*k;
-    const ta=Number.isFinite(p.targetAngle)?p.targetAngle:(p.angle||0);
-    let da=Math.atan2(Math.sin(ta-(p.angle||0)),Math.cos(ta-(p.angle||0)));
-    p.angle=(p.angle||0)+da*Math.min(1,dt*24);
-    p.slashT=Math.max(0,(p.slashT||0)-dt);
+  // Match solo movement locally at 60 FPS. The server remains authoritative for
+  // combat/collisions, but the local player no longer waits for a 20–30 Hz
+  // network snapshot to move. This removes the "heavy/laggy" multiplayer feel.
+  const p=arena.player,s=combatStats();
+  let dx=0,dy=0;
+  if(arena.keys.w||arena.keys.ArrowUp)dy--;
+  if(arena.keys.s||arena.keys.ArrowDown)dy++;
+  if(arena.keys.a||arena.keys.ArrowLeft)dx--;
+  if(arena.keys.d||arena.keys.ArrowRight)dx++;
+  if(dx||dy){
+    const l=Math.hypot(dx,dy);
+    p.x+=dx/l*s.spd*60*dt;
+    p.y+=dy/l*s.spd*60*dt;
   }
-  for(const e of arena.enemies){if(Number.isFinite(e.targetX)){const k=Math.min(1,dt*16);e.x+=(e.targetX-e.x)*k;e.y+=(e.targetY-e.y)*k}e.hit=Math.max(0,(e.hit||0)-dt);e.attack=Math.max(0,(e.attack||0)-dt)}
-  if(Number.isFinite(coopServerX)&&Number.isFinite(coopServerY)){
-    // Client prediction keeps the local player responsive; server snapshots
-    // continuously reconcile small drift instead of snapping after 180ms RTT.
-    const ex=coopServerX-arena.player.x, ey=coopServerY-arena.player.y;
-    const error=Math.hypot(ex,ey);
-    if(error>90){
-      arena.player.x=coopServerX; arena.player.y=coopServerY;
-    }else{
-      const correction=Math.min(1,dt*(error>25?7:3.5));
-      arena.player.x+=ex*correction; arena.player.y+=ey*correction;
+  p.x=Math.max(30,Math.min(arena.w-30,p.x));
+  p.y=Math.max(62,Math.min(arena.h-30,p.y));
+
+  for(const q of Object.values(coopPeers)){
+    const k=Math.min(1,dt*18);q.x+=(q.targetX-q.x)*k;q.y+=(q.targetY-q.y)*k;
+    const ta=Number.isFinite(q.targetAngle)?q.targetAngle:(q.angle||0);
+    let da=Math.atan2(Math.sin(ta-(q.angle||0)),Math.cos(ta-(q.angle||0)));
+    q.angle=(q.angle||0)+da*Math.min(1,dt*24);
+    q.slashT=Math.max(0,(q.slashT||0)-dt);
+  }
+  for(const e of arena.enemies){
+    if(Number.isFinite(e.targetX)){
+      const k=Math.min(1,dt*18);
+      e.x+=(e.targetX-e.x)*k;e.y+=(e.targetY-e.y)*k;
     }
-    arena.player.x=Math.max(30,Math.min(arena.w-30,arena.player.x));
-    arena.player.y=Math.max(62,Math.min(arena.h-30,arena.player.y));
+    e.hit=Math.max(0,(e.hit||0)-dt);
+    e.attack=Math.max(0,(e.attack||0)-dt);
   }
-  arena.player.attackCd=Math.max(0,arena.player.attackCd-dt);arena.player.slashT=Math.max(0,arena.player.slashT-dt);arena.player.inv=Math.max(0,arena.player.inv-dt);arena.player.skillCd=Math.max(0,arena.player.skillCd-dt);
-  // Multiplayer arrows are rendered from authoritative server snapshots.
-  // The client only interpolates toward the latest server position; it never decides hits.
+
+  if(Number.isFinite(coopServerX)&&Number.isFinite(coopServerY)){
+    // Reconcile the predicted local position gradually. Small network errors
+    // are absorbed instead of causing visible rubber-banding.
+    const ex=coopServerX-p.x,ey=coopServerY-p.y,error=Math.hypot(ex,ey);
+    if(error>120){
+      p.x=coopServerX;p.y=coopServerY;
+    }else{
+      const correction=Math.min(1,dt*(error>35?4.5:1.8));
+      p.x+=ex*correction;p.y+=ey*correction;
+    }
+    p.x=Math.max(30,Math.min(arena.w-30,p.x));
+    p.y=Math.max(62,Math.min(arena.h-30,p.y));
+  }
+
+  p.attackCd=Math.max(0,p.attackCd-dt);
+  p.slashT=Math.max(0,p.slashT-dt);
+  p.inv=Math.max(0,p.inv-dt);
+  p.skillCd=Math.max(0,p.skillCd-dt);
+
+  // Multiplayer arrows remain server-authoritative; only their presentation
+  // is interpolated locally for smooth rendering.
   for(const q of arena.projectiles){
     if(q.owner==='coopArrow'||q.owner==='remoteArrow'){
       if(Number.isFinite(q.targetX)){
-        const k=Math.min(1,dt*24);
+        const k=Math.min(1,dt*28);
         q.x+=(q.targetX-q.x)*k;q.y+=(q.targetY-q.y)*k;
       }
       q.angle=Math.atan2(q.vy,q.vx);
@@ -1252,7 +1281,7 @@ function coopClientVisualTick(dt){
   for(const q of arena.slashes)q.t-=dt;arena.slashes=arena.slashes.filter(q=>q.t>0);
   for(const q of arena.particles){q.x+=q.vx*60*dt;q.y+=q.vy*60*dt;q.vx*=.96;q.vy*=.96;q.life-=dt}arena.particles=arena.particles.filter(q=>q.life>0);
 }
-function coopTick(){if(!coopSocket||coopSocket.readyState!==1)return;const p=arena.player,now=performance.now();if(now-coopLastNet>50){coopLastNet=now;const dx=(arena.keys.d||arena.keys.ArrowRight?1:0)-(arena.keys.a||arena.keys.ArrowLeft?1:0),dy=(arena.keys.s||arena.keys.ArrowDown?1:0)-(arena.keys.w||arena.keys.ArrowUp?1:0);coopInput={x:dx,y:dy};coopSend({type:'input',x:dx,y:dy,angle:p.angle||0})}}
+function coopTick(){if(!coopSocket||coopSocket.readyState!==1)return;const p=arena.player,now=performance.now();if(now-coopLastNet>33){coopLastNet=now;const dx=(arena.keys.d||arena.keys.ArrowRight?1:0)-(arena.keys.a||arena.keys.ArrowLeft?1:0),dy=(arena.keys.s||arena.keys.ArrowDown?1:0)-(arena.keys.w||arena.keys.ArrowUp?1:0);coopInput={x:dx,y:dy};coopSend({type:'input',x:dx,y:dy,angle:p.angle||0})}}
 function showCoopStart(show){const el=$('coopStartOverlay');if(el)el.classList.toggle('hidden',!show);if(show)updateCoopLobby()}
 function updateCoopLobby(){const total=Object.keys(coopPeers).length+(coopId?1:0),st=$('coopStartStatus'),btn=$('coopStartBattle'),txt=$('coopStartText');if(st)st.textContent=coopServerPhase==='battle'?'⚔️ Battle running • '+total+' players':coopServerPhase==='upgrade'?'✨ Everyone is choosing an upgrade':'🟢 Server room • '+total+' player'+(total===1?'':'s');if(btn){btn.disabled=!coopSocket||coopSocket.readyState!==1||!(coopServerPhase==='lobby'||coopServerPhase==='gameover');btn.textContent=coopServerPhase==='gameover'?'↻ RESTART RUN':(coopServerPhase==='lobby'?'▶ START BATTLE':'⚔️ BATTLE RUNNING')}if(txt)txt.textContent='Cloudflare server controls the battle clock, enemies, waves and upgrades. No player is the host.'}
 function resetArenaRun(){arena.running=false;arena.wave=1;arena.spawned=0;arena.enemies=[];arena.projectiles=[];arena.particles=[];arena.slashes=[];resetWaveUpgrades();arena.player={x:0,y:0,targetX:0,targetY:0,hp:combatStats().maxHp,dir:1,angle:0,attackAngle:0,attackCd:0,slashT:0,inv:0,skillCd:0};resizeArena();arenaStats()}

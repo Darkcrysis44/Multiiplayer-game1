@@ -1,6 +1,6 @@
 const MAX_PLAYERS = 4;
-const TICK_MS = 50;       // 20 Hz authoritative simulation
-const STATE_MS = 50;      // 20 Hz snapshots: smoother remote world at higher latency
+const TICK_MS = 33;       // 30 Hz authoritative simulation; client predicts locally at 60 FPS
+const STATE_MS = 50;      // 20 Hz snapshots; local player is client-predicted, remote entities are interpolated
 const WIDTH = 1200, HEIGHT = 700;
 const TYPES = {
   broken:[.55,1,1,21,'Broken Heart','Common'], charger:[.10,.8,1.8,19,'Heart Charger','Uncommon'],
