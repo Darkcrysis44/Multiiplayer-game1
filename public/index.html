@@ -1198,7 +1198,7 @@ function coopApplyState(m){
     if(Number.isFinite(m.player.y)){coopServerY=coopWorldY(m.player.y);arena.player.targetY=coopServerY;}
     if(!Number.isFinite(arena.player.targetX))arena.player.targetX=coopServerX;
     if(!Number.isFinite(arena.player.targetY))arena.player.targetY=coopServerY;
-    arena.player.hp=m.player.hp;arena.player.maxHp=m.player.maxHp||arena.player.maxHp;arena.player.angle=m.player.angle||arena.player.angle;arena.player.weapon=m.player.weapon||arena.player.weapon||'sword';arena.player.skill=m.player.skill||arena.player.skill||'';arena.player.skillCd=Number(m.player.skillCd)||0;arena.player.downed=!!m.player.downed;arena.player.reviveProgress=m.player.reviveProgress||0;
+    arena.player.hp=m.player.hp;arena.player.maxHp=m.player.maxHp||arena.player.maxHp;arena.player.serverAngle=m.player.angle||arena.player.serverAngle||arena.player.angle;arena.player.weapon=m.player.weapon||arena.player.weapon||'sword';arena.player.skill=m.player.skill||arena.player.skill||'';arena.player.skillCd=Number(m.player.skillCd)||0;arena.player.downed=!!m.player.downed;arena.player.reviveProgress=m.player.reviveProgress||0;
     if(Number.isFinite(m.player.atk))coopServerStats=coopServerStats||{};
     if(Number.isFinite(m.player.atk))coopServerStats.atk=m.player.atk;
     if(Number.isFinite(m.player.spd))coopServerStats.spd=m.player.spd;
@@ -1277,7 +1277,7 @@ function coopClientVisualTick(dt){
   p.y=Math.max(62,Math.min(arena.h-30,p.y));
 
   for(const q of Object.values(coopPeers)){
-    const k=1-Math.exp(-dt*22);q.x+=(q.targetX-q.x)*k;q.y+=(q.targetY-q.y)*k;
+    const k=1-Math.exp(-dt*26);q.x+=(q.targetX-q.x)*k;q.y+=(q.targetY-q.y)*k;
     const ta=Number.isFinite(q.targetAngle)?q.targetAngle:(q.angle||0);
     let da=Math.atan2(Math.sin(ta-(q.angle||0)),Math.cos(ta-(q.angle||0)));
     q.angle=(q.angle||0)+da*(1-Math.exp(-dt*30));
@@ -1368,7 +1368,7 @@ slash=function(angle){
       burst(arena.player.x+Math.cos(angle)*35,arena.player.y+Math.sin(angle)*35,5,'slash');
       sfx('slash');
     }
-    coopSend({type:'attack',angle,weapon,stats:coopStats()});
+    coopSend({type:'attack',angle,weapon,x:arena.player.x,y:arena.player.y,stats:coopStats()});
     return;
   }
   arena.player.attackAngle=angle;

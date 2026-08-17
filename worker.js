@@ -226,12 +226,17 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     this.broadcastState(true);
   }
   serverAttack(p,m){
-    const now=Date.now();if(now-p.lastAttack<500)return;p.lastAttack=now;
+    const now=Date.now();if(now-p.lastAttack<300)return;p.lastAttack=now;
     const weapon=m.weapon==='bow'?'bow':'sword';p.weapon=weapon;
     const angle=Number.isFinite(Number(m.angle))?Number(m.angle):p.angle;p.angle=angle;
+    // Client prediction can be a few frames ahead of the authoritative player.
+    // Use the reported attack origin when it is close enough to the server position,
+    // so a visually correct swing is not rejected by a tiny prediction offset.
+    const ox=Number(m.x),oy=Number(m.y);let attackX=p.x,attackY=p.y;
+    if(Number.isFinite(ox)&&Number.isFinite(oy)&&Math.hypot(ox-p.x,oy-p.y)<=90){attackX=clamp(ox,30,WIDTH-30);attackY=clamp(oy,62,HEIGHT-30)}
     if(weapon==='bow'){
       const projectile={
-        id:'a'+(++this.attackSeq),owner:p.id,x:p.x+Math.cos(angle)*22,y:p.y+Math.sin(angle)*22,
+        id:'a'+(++this.attackSeq),owner:p.id,x:attackX+Math.cos(angle)*22,y:attackY+Math.sin(angle)*22,
         vx:Math.cos(angle)*8.5,vy:Math.sin(angle)*8.5,angle,life:1.8,damage:clamp(Number(m.stats?.atk)||p.atk,1,10000),
         crit:Math.random()<p.crit,hit:false,radius:8
       };
@@ -240,15 +245,15 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       return;
     }
     let best=null,bestAlong=Infinity;
-    const maxRange=125,hitWidth=52,ca=Math.cos(angle),sa=Math.sin(angle);
+    const maxRange=138,hitWidth=62,ca=Math.cos(angle),sa=Math.sin(angle);
     for(const e of this.enemies){
-      const rx=e.x-p.x,ry=e.y-p.y,along=rx*ca+ry*sa;
+      const rx=e.x-attackX,ry=e.y-attackY,along=rx*ca+ry*sa;
       if(along<0||along>maxRange)continue;
       const side=Math.abs(-rx*sa+ry*ca),radius=(e.r||20)+hitWidth;
       if(side>radius)continue;
       if(along<bestAlong){best=e;bestAlong=along}
     }
-    let hitX=p.x+ca*maxRange,hitY=p.y+sa*maxRange;
+    let hitX=attackX+ca*maxRange,hitY=attackY+sa*maxRange;
     if(best){
       hitX=best.x;hitY=best.y;
       let dmg=clamp(Number(m.stats?.atk)||p.atk,1,10000);if(best.shieldT>0)dmg*=.35;if(Math.random()<p.crit)dmg*=2;
