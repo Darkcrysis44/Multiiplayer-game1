@@ -1,7 +1,7 @@
 const MAX_PLAYERS = 4;
 const COOP_SPEED_MULT = 1.22;
-const TICK_MS = 33;       // 30 Hz authoritative simulation; client predicts locally at 60 FPS
-const STATE_MS = 33;      // 30 Hz snapshots for tighter multiplayer reconciliation
+const TICK_MS = 16;       // 60 Hz authoritative simulation; client predicts locally at 60 FPS
+const STATE_MS = 16;      // 60 Hz snapshots for tighter multiplayer reconciliation
 const WIDTH = 1200, HEIGHT = 700;
 const TYPES = {
   broken:[.55,1,1,21,'Broken Heart','Common'], charger:[.10,.8,1.8,19,'Heart Charger','Uncommon'],

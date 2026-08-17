@@ -1266,13 +1266,14 @@ function coopClientVisualTick(dt){
     // are absorbed instead of causing visible rubber-banding.
     const ex=coopServerX-p.x,ey=coopServerY-p.y,error=Math.hypot(ex,ey);
     const moving=arena.keys.w||arena.keys.a||arena.keys.s||arena.keys.d||arena.keys.ArrowUp||arena.keys.ArrowLeft||arena.keys.ArrowDown||arena.keys.ArrowRight;
-    if(error>170){
+    // While the local player is actively moving, never pull the character
+    // around with ordinary network corrections. The local simulation owns the
+    // feel of movement just like solo mode; the server only corrects a real
+    // divergence (teleport/reset/collision) instead of producing drift.
+    if(error>150){
       p.x=coopServerX;p.y=coopServerY;
-    }else if(error>55){
-      const correction=Math.min(1,dt*3.2);
-      p.x+=ex*correction;p.y+=ey*correction;
-    }else if(!moving && error>12){
-      const correction=Math.min(1,dt*2.4);
+    }else if(!moving && error>10){
+      const correction=Math.min(1,dt*10);
       p.x+=ex*correction;p.y+=ey*correction;
     }
     p.x=Math.max(30,Math.min(arena.w-30,p.x));
