@@ -245,13 +245,20 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       this.broadcast({type:'fx',kind:'projectile',projectile:{id:projectile.id,owner:p.id,x:projectile.x,y:projectile.y,vx:projectile.vx,vy:projectile.vy,angle,weapon:'bow'},serverNow:now});
       return;
     }
+    // Melee hitbox: use the actual sword arc as a short capsule rather than
+    // testing against the enemy center with an oversized side radius. This
+    // keeps hits consistent with the visible slash and still catches an
+    // enemy when its body enters the blade's reach.
     let best=null,bestAlong=Infinity;
-    const maxRange=138,hitWidth=62,ca=Math.cos(angle),sa=Math.sin(angle);
+    const maxRange=128,bladeWidth=30,ca=Math.cos(angle),sa=Math.sin(angle);
     for(const e of this.enemies){
-      const rx=e.x-attackX,ry=e.y-attackY,along=rx*ca+ry*sa;
-      if(along<0||along>maxRange)continue;
-      const side=Math.abs(-rx*sa+ry*ca),radius=(e.r||20)+hitWidth;
-      if(side>radius)continue;
+      const rx=e.x-attackX,ry=e.y-attackY;
+      const along=rx*ca+ry*sa;
+      const side=Math.abs(-rx*sa+ry*ca);
+      const er=e.r||20;
+      if(along<-8||along>maxRange+er)continue;
+      if(side>bladeWidth+er)continue;
+      if(Math.hypot(rx,ry)>maxRange+er)continue;
       if(along<bestAlong){best=e;bestAlong=along}
     }
     let hitX=attackX+ca*maxRange,hitY=attackY+sa*maxRange;
