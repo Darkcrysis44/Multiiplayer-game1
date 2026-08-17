@@ -1393,12 +1393,12 @@ const originalSlash=slash;
 slash=function(angle){
   if(coopSocket&&coopSocket.readyState===1&&coopStarted){
     const attackNow=performance.now();
-    if(arena.player.downed||arena.player.attackCd>0||attackNow-coopLocalAttackAt<480)return;
+    if(arena.player.downed||arena.player.attackCd>0||attackNow-coopLocalAttackAt<270)return;
     coopLocalAttackAt=attackNow;
     arena.player.angle=angle;
     arena.player.attackAngle=angle;
     arena.player.angle=angle;
-    arena.player.attackCd=.5;
+    arena.player.attackCd=.27;
     const weapon=arenaState.activeWeaponType==='bow'?'bow':'sword';
     arena.player.weapon=weapon;
     if(weapon==='bow'){

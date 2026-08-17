@@ -246,21 +246,27 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       this.broadcast({type:'fx',kind:'projectile',projectile:{id:projectile.id,owner:p.id,x:projectile.x,y:projectile.y,vx:projectile.vx,vy:projectile.vy,angle,weapon:'bow'},serverNow:now});
       return;
     }
-    // Server-authoritative sword capsule. It checks the entire enemy body,
-    // not only its center, so edge contacts are reliable and deterministic.
+    // IMPORTANT: multiplayer melee uses the exact same collision geometry as Solo.
+    // Solo tests a 92px blade segment with a 13px blade radius against the enemy
+    // body radius. Use the attack packet's current visual player position when it
+    // is close to the authoritative position; this removes prediction/network
+    // drift from the melee origin without allowing arbitrary teleports.
+    const reportedX=Number(m.x),reportedY=Number(m.y);
+    if(Number.isFinite(reportedX)&&Number.isFinite(reportedY)){
+      const reportDelta=Math.hypot(reportedX-p.x,reportedY-p.y);
+      if(reportDelta<=140){attackX=reportedX;attackY=reportedY;}
+    }
     let best=null,bestDist=Infinity;
-    // Collision must match the visible slash: only the blade body can hit,
-    // never an invisible long-range circle/cone.
-    const maxRange=92, bladeRadius=13, ca=Math.cos(angle), sa=Math.sin(angle);
-    const endX=attackX+ca*maxRange, endY=attackY+sa*maxRange;
+    const reach=92,bladeRadius=13,ca=Math.cos(angle),sa=Math.sin(angle);
     for(const e of this.enemies){
-      const er=Math.max(10,e.r||20);
       const vx=e.x-attackX,vy=e.y-attackY;
-      const t=clamp((vx*ca+vy*sa)/maxRange,0,1);
-      const cx=attackX+ca*maxRange*t,cy=attackY+sa*maxRange*t;
+      const t=Math.max(0,Math.min(1,(vx*ca+vy*sa)/reach));
+      const cx=attackX+ca*reach*t,cy=attackY+sa*reach*t;
+      const er=Math.max(10,e.r||20);
       const d=Math.hypot(e.x-cx,e.y-cy);
       if(d<=bladeRadius+er && d<bestDist){best=e;bestDist=d}
     }
+    const endX=attackX+ca*reach,endY=attackY+sa*reach;
     let hitX=endX,hitY=endY;
     if(best){
       hitX=best.x;hitY=best.y;
@@ -270,7 +276,7 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       best.hp-=dmg;best.hit=.14;
       if(best.hp<=0)this.killEnemy(best,p.id);
     }
-    this.broadcast({type:'fx',kind:'attack',attackId:++this.attackSeq,from:p.id,x:p.x,y:p.y,angle,weapon:'sword',hit:!!best,hitX,hitY,serverNow:now});
+    this.broadcast({type:'fx',kind:'attack',attackId:++this.attackSeq,from:p.id,x:attackX,y:attackY,angle,weapon:'sword',hit:!!best,hitX,hitY,serverNow:now});
   }
   tick(now){
     const raw=Math.max(0,Math.min(250,now-this.lastTick));this.lastTick=now;
