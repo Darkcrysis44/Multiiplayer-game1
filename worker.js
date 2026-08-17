@@ -238,13 +238,17 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
 
     if(weapon==='bow'){
       const arrowMult=clamp(Number(m.arrowMult)||1,1,3);
+      // Arrow starts from the center of the bow, not from the player's body.
+      // The visible bow is centered ~27px in front of the player.
+      const bowOffset=27;
       const projectile={
         id:'a'+(++this.attackSeq),owner:p.id,
-        x:p.x,y:p.y,
+        x:p.x+Math.cos(angle)*bowOffset,
+        y:p.y+Math.sin(angle)*bowOffset,
         vx:Math.cos(angle)*7.2,vy:Math.sin(angle)*7.2,
         angle,life:2.4,
         damage:clamp((Number(m.stats?.atk)||p.atk)*1.15*arrowMult,1,10000),
-        crit:false,hit:false,radius:16,arrowType:String(m.arrowType||'Basic Arrow')
+        crit:false,hit:false,radius:6,arrowType:String(m.arrowType||'Basic Arrow')
       };
       this.projectiles.push(projectile);
       this.broadcast({
@@ -256,21 +260,19 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       return;
     }
 
-    // Same Solo sword attack timing, origin, arc and damage rules.
+    // Sword is a literal blade segment now. If the enemy body touches the
+    // visible sword line, it is a hit immediately. No slash arc, no angle cone.
     const hits=[];
     const ca=Math.cos(angle),sa=Math.sin(angle);
+    const bladeStart=7, bladeEnd=52, bladeRadius=4.5;
     for(const e of this.enemies){
       if(!e||e.hp<=0)continue;
-      const er=Math.max(10,e.r||20);
-      const dxw=e.x-p.x,dyw=e.y-p.y;
-      const lx=dxw*ca+dyw*sa;
-      const ly=-dxw*sa+dyw*ca;
-      const rd=Math.hypot(lx,ly)||0.001;
-      let ad=Math.atan2(ly,lx);
-      const angularPad=Math.asin(Math.min(.98,er/Math.max(rd,er)));
-      const radialHit=Math.abs(rd-55)<=5.5+er;
-      const angleHit=ad>=(-1-angularPad)&&ad<=(.8+angularPad);
-      if(radialHit&&angleHit){
+      const vx=e.x-p.x,vy=e.y-p.y;
+      const along=vx*ca+vy*sa;
+      if(along < bladeStart-(e.r||20) || along > bladeEnd+(e.r||20)) continue;
+      const side=Math.abs(-vx*sa+vy*ca);
+      const er=Math.max(8,e.r||20);
+      if(side <= er+bladeRadius){
         let dmg=clamp(Number(m.stats?.atk)||p.atk,1,10000);
         if(e.shieldT>0)dmg*=.35;
         if(Math.random()<p.crit)dmg*=2;
