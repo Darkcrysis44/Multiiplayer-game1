@@ -146,7 +146,7 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     p.progressRev++;
     return leveled;
   }
-  progression(p){return {level:p.level||1,xp:p.xp||0,rebirths:p.rebirths||0,mult:p.mult||1,progressRev:p.progressRev||0,stats:{maxHp:p.maxHp,atk:p.atk,spd:p.spd,armor:p.armor,crit:p.crit}}}
+  progression(p){return {level:p.level||1,xp:p.xp||0,rebirths:p.rebirths||0,mult:p.mult||1,progressRev:p.progressRev||0}}
   killEnemy(e,owner){
     if(!e||!this.enemies.some(x=>x.id===e.id))return;
     const reward=e.boss?80+this.wave*8:3+Math.floor(this.wave*.9);
