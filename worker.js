@@ -1,6 +1,6 @@
 const MAX_PLAYERS = 4;
-const TICK_MS = 50;       // 20 Hz authoritative simulation
-const STATE_MS = 50;      // 20 Hz snapshots: smoother remote world at higher latency
+const TICK_MS = 33;       // ~30 Hz authoritative simulation (smoother co-op)
+const STATE_MS = 33;      // ~30 Hz snapshots; client prediction covers the rest
 const WIDTH = 1200, HEIGHT = 700;
 const TYPES = {
   broken:[.55,1,1,21,'Broken Heart','Common'], charger:[.10,.8,1.8,19,'Heart Charger','Uncommon'],
@@ -82,6 +82,7 @@ export class Room {
       return;
     }
     if(m.type==='restartRequest' && this.phase==='gameover' && this.players.size>=1){
+      if(m.stats)this.setStats(p,m.stats);
       this.phase='countdown';this.enemies=[];this.spawned=0;this.wave=1;this.picks.clear();this.offer=null;this.countdownAt=Date.now()+1200;
       for(const q of this.players.values()){q.x=WIDTH/2;q.y=HEIGHT/2;q.hp=q.maxHp;q.downed=false;q.reviveProgress=0;q.ix=0;q.iy=0;q.lastAttack=0}
       this.broadcast({type:'serverRestart',startAt:this.countdownAt,serverNow:Date.now()});this.broadcastState(true);return;
