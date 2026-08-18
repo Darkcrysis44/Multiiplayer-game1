@@ -1,6 +1,7 @@
 const MAX_PLAYERS = 4;
-const TICK_MS = 16;       // ~60 Hz authoritative simulation (smoother co-op)
-const STATE_MS = 33;      // ~30 Hz snapshots; client prediction covers the rest
+const COOP_SPEED_MULT = 1.22;
+const TICK_MS = 16;       // 60 Hz authoritative simulation; client predicts locally at 60 FPS
+const STATE_MS = 16;      // 60 Hz snapshots for tighter multiplayer reconciliation
 const WIDTH = 1200, HEIGHT = 700;
 const TYPES = {
   broken:[.55,1,1,21,'Broken Heart','Common'], charger:[.10,.8,1.8,19,'Heart Charger','Uncommon'],
@@ -13,16 +14,16 @@ const TYPES = {
   lovebreaker:[.01,2,.95,27,'Love Breaker','Epic'], witch:[.005,1.05,.5,22,'Heart Witch','Legendary']
 };
 const BOSS_DEFS = [
-  {name:'Heartbreaker',icon:'💔',hp:7,spd:.70,atk:3.4,skill:'dash'},
-  {name:'Rose Colossus',icon:'🌹',hp:11,spd:.42,atk:4.5,skill:'slam'},
-  {name:'Cupid Tyrant',icon:'🏹',hp:8,spd:.58,atk:3.2,skill:'volley'},
-  {name:'Broken Duchess',icon:'👑',hp:6.5,spd:.82,atk:3.0,skill:'summon'},
-  {name:'Grief Knight',icon:'🛡️',hp:9,spd:.62,atk:4.0,skill:'shield'},
-  {name:'Passion Beast',icon:'🔥',hp:8.5,spd:1.05,atk:3.7,skill:'charge'},
-  {name:'Toxic Lover',icon:'☠️',hp:7.5,spd:.72,atk:3.1,skill:'poison'},
-  {name:'Shadow Heart',icon:'🌑',hp:6,spd:1.15,atk:3.0,skill:'blink'},
-  {name:'Love Reaper',icon:'🗡️',hp:10,spd:.76,atk:4.2,skill:'scythe'},
-  {name:'Final Heart',icon:'❤️‍🔥',hp:14,spd:.55,atk:5.0,skill:'nova'}
+  {name:'Heartbreaker',icon:'💔',hp:7,spd:.70,atk:3.4,skill:'dash',style:'heartbreaker'},
+  {name:'Rose Colossus',icon:'🌹',hp:11,spd:.42,atk:4.5,skill:'slam',style:'colossus'},
+  {name:'Cupid Tyrant',icon:'🏹',hp:8,spd:.58,atk:3.2,skill:'volley',style:'tyrant'},
+  {name:'Broken Duchess',icon:'👑',hp:6.5,spd:.82,atk:3.0,skill:'summon',style:'duchess'},
+  {name:'Grief Knight',icon:'🛡️',hp:9,spd:.62,atk:4.0,skill:'shield',style:'knight'},
+  {name:'Passion Beast',icon:'🔥',hp:8.5,spd:1.05,atk:3.7,skill:'charge',style:'beast'},
+  {name:'Toxic Lover',icon:'☠️',hp:7.5,spd:.72,atk:3.1,skill:'poison',style:'toxic'},
+  {name:'Shadow Heart',icon:'🌑',hp:6,spd:1.15,atk:3.0,skill:'blink',style:'shadow'},
+  {name:'Love Reaper',icon:'🗡️',hp:10,spd:.76,atk:4.2,skill:'scythe',style:'reaper'},
+  {name:'Final Heart',icon:'❤️‍🔥',hp:14,spd:.55,atk:5.0,skill:'nova',style:'final'}
 ];
 const UPGRADE_CHOICES = [
   {id:'hp',icon:'❤️',name:'Vitality',desc:'Max HP +25'}, {id:'atk',icon:'⚔️',name:'Sharpness',desc:'Attack +4'},
@@ -74,7 +75,7 @@ export class Room {
     if(m.type==='progressSync' && m.progression){
       const pr=m.progression;
       const rev=clamp(Number(pr.progressRev)||0,0,1e9);
-      if(rev>=p.progressRev){
+      if(rev>p.progressRev){
         p.level=clamp(Number(pr.level)||p.level,1,9999);p.xp=clamp(Number(pr.xp)||0,0,1e12);p.rebirths=clamp(Number(pr.rebirths)||p.rebirths,0,9999);p.mult=clamp(Number(pr.mult)||p.mult,1,1000);
         p.progressRev=rev;
         this.send(id,{type:'progression',progression:this.progression(p)});this.broadcastState(true);
@@ -82,7 +83,6 @@ export class Room {
       return;
     }
     if(m.type==='restartRequest' && this.phase==='gameover' && this.players.size>=1){
-      if(m.stats)this.setStats(p,m.stats);
       this.phase='countdown';this.enemies=[];this.spawned=0;this.wave=1;this.picks.clear();this.offer=null;this.countdownAt=Date.now()+1200;
       for(const q of this.players.values()){q.x=WIDTH/2;q.y=HEIGHT/2;q.hp=q.maxHp;q.downed=false;q.reviveProgress=0;q.ix=0;q.iy=0;q.lastAttack=0}
       this.broadcast({type:'serverRestart',startAt:this.countdownAt,serverNow:Date.now()});this.broadcastState(true);return;
@@ -131,6 +131,7 @@ export class Room {
       hp*=bossDef.hp;spd*=bossDef.spd;atk*=bossDef.atk;r=44;
     }else{const t=TYPES[type]||TYPES.broken;hp*=t[1];spd*=t[2];r=t[3];if(type==='charger')atk*=1.15;if(type==='tank')atk*=1.35;if(type==='duelist')atk*=1.65;if(type==='assassin')atk*=2;if(type==='brute')atk*=1.7;if(type==='lovebreaker')atk*=3;if(type==='berserker')atk*=2.35;if(type==='lancer')atk*=1.9;if(type==='witch')atk*=1.45}
     this.enemies.push({id:'e'+this.nextEnemy++,x,y,hp,maxHp:hp,r,speed:spd,atk,hit:0,attack:.7+Math.random(),type,boss:type==='boss',bossIndex:type==='boss'?Math.floor(this.wave/5)-1:-1,bossDef:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length]:null,
+attackT:0,attackAngle:0,
 name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:(TYPES[type]?.[4]||'Broken Heart'),rarity:type==='boss'?'Legendary':(TYPES[type]?.[5]||'Common')});this.spawned++;
   }
   xpNeed(level){return Math.floor(100*Math.pow(1.12,Math.max(0,level-1)))}
@@ -147,14 +148,35 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     p.progressRev++;
     return leveled;
   }
-  progression(p){return {level:p.level||1,xp:p.xp||0,rebirths:p.rebirths||0,mult:p.mult||1,progressRev:p.progressRev||0}}
+  progression(p){return {level:p.level||1,xp:p.xp||0,rebirths:p.rebirths||0,mult:p.mult||1,progressRev:p.progressRev||0,stats:{maxHp:p.maxHp,atk:p.atk,spd:p.spd,armor:p.armor,crit:p.crit}}}
   killEnemy(e,owner){
     if(!e||!this.enemies.some(x=>x.id===e.id))return;
-    const reward=e.boss?80+this.wave*8:3+Math.floor(this.wave*.9);
-    const xp=(e.boss?180:25)+this.wave*6;
+    const baseReward=e.boss?80+this.wave*8:3+Math.floor(this.wave*.9);
+    const baseXp=(e.boss?180:25)+this.wave*6;
     this.enemies=this.enemies.filter(x=>x.id!==e.id);
-    const p=owner?this.players.get(owner):null;
-    if(p){this.awardXp(p,xp);this.send(owner,{type:'reward',reward,xp,progression:this.progression(p)});}
+
+    // Co-op contribution reward: the killer gets 100%, every other connected
+    // player gets 75% of the same reward. Everyone gains XP/progression too.
+    // The killer's reward is never reduced by the presence of teammates.
+    for(const [id,p] of this.players){
+      const isKiller=id===owner;
+      const ratio=isKiller?1:.75;
+      let reward=baseReward*ratio;
+      const xp=baseXp*ratio;
+      // Fortune belongs to the player receiving the reward, but the 75%
+      // co-op contribution share remains the base share before that bonus.
+      if(p.passives?.includes('fortune')) reward=Math.ceil(reward*1.15);
+      this.awardXp(p,xp);
+      this.send(id,{
+        type:'reward',
+        reward,
+        xp,
+        ratio,
+        killer:isKiller,
+        enemyId:e.id,
+        progression:this.progression(p)
+      });
+    }
   }
   serverSkill(p,m){
     const now=Date.now();
@@ -205,12 +227,17 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     this.broadcastState(true);
   }
   serverAttack(p,m){
-    const now=Date.now();if(now-p.lastAttack<500)return;p.lastAttack=now;
+    const now=Date.now();if(now-p.lastAttack<300)return;p.lastAttack=now;
     const weapon=m.weapon==='bow'?'bow':'sword';p.weapon=weapon;
     const angle=Number.isFinite(Number(m.angle))?Number(m.angle):p.angle;p.angle=angle;
+    // Client prediction can be a few frames ahead of the authoritative player.
+    // Use the reported attack origin when it is close enough to the server position,
+    // so a visually correct swing is not rejected by a tiny prediction offset.
+    const ox=Number(m.x),oy=Number(m.y);let attackX=p.x,attackY=p.y;
+    if(Number.isFinite(ox)&&Number.isFinite(oy)&&Math.hypot(ox-p.x,oy-p.y)<=90){attackX=clamp(ox,30,WIDTH-30);attackY=clamp(oy,62,HEIGHT-30)}
     if(weapon==='bow'){
       const projectile={
-        id:'a'+(++this.attackSeq),owner:p.id,x:p.x+Math.cos(angle)*22,y:p.y+Math.sin(angle)*22,
+        id:'a'+(++this.attackSeq),owner:p.id,x:attackX+Math.cos(angle)*43,y:attackY+Math.sin(angle)*43,
         vx:Math.cos(angle)*8.5,vy:Math.sin(angle)*8.5,angle,life:1.8,damage:clamp(Number(m.stats?.atk)||p.atk,1,10000),
         crit:Math.random()<p.crit,hit:false,radius:8
       };
@@ -219,15 +246,15 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       return;
     }
     let best=null,bestAlong=Infinity;
-    const maxRange=125,hitWidth=52,ca=Math.cos(angle),sa=Math.sin(angle);
+    const maxRange=138,hitWidth=62,ca=Math.cos(angle),sa=Math.sin(angle);
     for(const e of this.enemies){
-      const rx=e.x-p.x,ry=e.y-p.y,along=rx*ca+ry*sa;
+      const rx=e.x-attackX,ry=e.y-attackY,along=rx*ca+ry*sa;
       if(along<0||along>maxRange)continue;
       const side=Math.abs(-rx*sa+ry*ca),radius=(e.r||20)+hitWidth;
       if(side>radius)continue;
       if(along<bestAlong){best=e;bestAlong=along}
     }
-    let hitX=p.x+ca*maxRange,hitY=p.y+sa*maxRange;
+    let hitX=attackX+ca*maxRange,hitY=attackY+sa*maxRange;
     if(best){
       hitX=best.x;hitY=best.y;
       let dmg=clamp(Number(m.stats?.atk)||p.atk,1,10000);if(best.shieldT>0)dmg*=.35;if(Math.random()<p.crit)dmg*=2;
@@ -243,7 +270,7 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     const dt=raw/1000;
     for(const p of this.players.values()){p.skillCd=Math.max(0,(p.skillCd||0)-raw/1000);
       if(p.downed){p.ix=0;p.iy=0;continue}
-      const l=Math.hypot(p.ix,p.iy)||1;p.x=clamp(p.x+p.ix/l*p.spd*60*dt,30,WIDTH-30);p.y=clamp(p.y+p.iy/l*p.spd*60*dt,62,HEIGHT-30);
+      const l=Math.hypot(p.ix,p.iy)||1;p.x=clamp(p.x+p.ix/l*p.spd*COOP_SPEED_MULT*60*dt,30,WIDTH-30);p.y=clamp(p.y+p.iy/l*p.spd*COOP_SPEED_MULT*60*dt,62,HEIGHT-30);
     }
     // Authoritative co-op arrows: move on the server and damage only on actual collision.
     for(const a of this.projectiles){
@@ -352,9 +379,28 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       }
       let target=null,bd=Infinity;for(const p of this.players.values()){if(p.downed)continue;const d=dist(e,p);if(d<bd){bd=d;target=p}}
       if(!target)continue;
-      const dx=target.x-e.x,dy=target.y-e.y,d=Math.hypot(dx,dy)||1,contact=e.boss?72:46;
-      if(!e.dashT&&!e.chargeT&&d>contact){e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt}
-      else{e.attack-=dt;if(e.attack<=0){e.attack=e.boss?1.5:.9;const dmg=Math.max(1,e.atk-target.armor*.7);target.hp=Math.max(0,target.hp-dmg);if(target.hp<=0){target.hp=0;target.downed=true;target.reviveProgress=0;target.ix=0;target.iy=0;this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y})}}}
+      const dx=target.x-e.x,dy=target.y-e.y,d=Math.hypot(dx,dy)||1,contact=e.boss?52:Math.max(34,(e.r||20)+16);
+      if(!e.dashT&&!e.chargeT&&d>contact){
+        // Drive the enemy directly toward the player's live hitbox. Snap to the
+        // contact radius when the next movement step would cross it, so the
+        // attack frame can never happen from a visibly offset position.
+        const step=e.speed*60*dt;
+        const nd=Math.max(contact,d-step);
+        e.x=target.x-dx/d*nd;e.y=target.y-dy/d*nd;
+      }else{
+        e.attack-=dt;
+        if(e.attack<=0){
+          e.attack=e.boss?1.5:.9;
+          const a=Math.atan2(target.y-e.y,target.x-e.x);
+          // Keep the attacker physically aligned with the player's hitbox.
+          e.x=target.x-Math.cos(a)*contact;
+          e.y=target.y-Math.sin(a)*contact;
+          const dmg=Math.max(1,e.atk-target.armor*.7);
+          this.broadcast({type:'enemyAttackFx',enemyId:e.id,targetId:target.id,x:target.x,y:target.y,angle:a,damage:dmg,serverNow:now});
+          target.hp=Math.max(0,target.hp-dmg);
+          if(target.hp<=0){target.hp=0;target.downed=true;target.reviveProgress=0;target.ix=0;target.iy=0;this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y})}
+        }
+      }
       e.x=clamp(e.x,-60,WIDTH+60);e.y=clamp(e.y,-60,HEIGHT+60);e.hit=Math.max(0,e.hit-dt);
     }
     const targetCount=this.wave%5===0?1:this.wave*3+4;
