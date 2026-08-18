@@ -1,38 +1,41 @@
-# Love Sword Arena — Cloudflare Multiplayer v14
+# Love Sword Arena Multiplayer v15 — Cloudflare Workers
 
-Bu paket Cloudflare Workers/Assets için hazırlanmıştır. Önceki sürümdeki `server.js + ws` Node sunucusu Cloudflare Pages/Workers deploy'una uygun olmadığı için kaldırıldı. Artık WebSocket endpoint'i `/ws` üzerinden Worker tarafından yönetiliyor.
+Bu sürüm Cloudflare Workers Static Assets yapısına göre düzenlenmiştir.
 
-## Cloudflare deploy
+## Klasör yapısı
 
-Bu klasörü GitHub'a yükleyip Cloudflare Workers'ta `wrangler deploy` ile deploy edebilirsin.
+- `public/index.html` — oyun
+- `public/music.mp3` — orijinal solo müzik asset'i
+- `worker.js` — `/ws` WebSocket multiplayer sunucusu
+- `wrangler.jsonc` — Static Assets yapılandırması
 
-Yerel:
+## Deploy
+
+Node.js 18+ ile:
 
 ```bash
 npm install
-npm run dev
-```
-
-Deploy:
-
-```bash
 npm run deploy
 ```
 
-Cloudflare Dashboard'dan Git entegrasyonu kullanıyorsan build command olarak `npm run deploy` ve framework preset olarak Workers/None kullan. `wrangler.jsonc` dosyası root'ta kalmalı.
+Cloudflare hesabına giriş gerekirse:
 
-## Multiplayer reward sistemi
+```bash
+npx wrangler login
+```
 
-Bir oyuncu düşmanı öldürdüğünde:
-- öldüren oyuncu: **%100 XP + %100 para**
-- diğer tüm oyuncular: **%75 XP + %75 para**
+## Neden `public`?
 
-Örneğin 100 XP / 40 para veren düşman:
-- Killer → 100 XP + 40 para
-- diğer oyuncu → 75 XP + 30 para
+Önceki sürümde assets directory proje köküydü. Bu, `worker.js`, config ve diğer proje dosyalarının da asset taramasına girmesine neden olabiliyordu. v15'te yalnızca `public/` statik asset olarak yüklenir.
 
-Bu ödül server tarafından dağıtıldığı için her oyuncu kendi client'ından sahte reward üretmeye çalışmamalı; production'da ayrıca server-side combat validation önerilir.
+Cloudflare'ın güncel Workers Static Assets sınırında tek bir statik dosya 25 MiB'a kadar olabilir. Orijinal `music.mp3` yaklaşık 8.6 MiB olduğu için tek başına bu sınıra takılmamalıdır.
 
-## Önemli
+## Multiplayer ödülleri
 
-Cloudflare Worker'daki oda state'i şu an Worker isolate belleğindedir. Küçük/tek-isolate testleri için yeterlidir. Gerçek production multiplayer için Cloudflare Durable Objects ile oda başına kalıcı WebSocket state'e geçirmek önerilir.
+Bir oyuncu düşman öldürdüğünde:
+- Öldüren oyuncu: %100 XP + %100 para
+- Diğer oyuncular: %75 XP + %75 para
+
+## Not
+
+Cloudflare Dashboard'daki eski Pages sürükle-bırak yöntemi yerine bu proje için `npm run deploy` ile Workers deploy edilmesi önerilir.
