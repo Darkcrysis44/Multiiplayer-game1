@@ -375,7 +375,12 @@ body:before{
 .lsa-shop-tab{border:1px solid #ff9db555;background:#160d18;color:#ffdce6;border-radius:10px;padding:8px 12px;cursor:pointer;font-weight:700}
 .lsa-shop-tab.active{background:#ff668f33;border-color:#ff9db5aa;box-shadow:0 0 12px #ff6e9422}
 </style>
-<style>.lsa-chance-panel{grid-column:1/-1;background:#180b15;border:1px solid #5f2a49;border-radius:14px;padding:12px}.lsa-chances{display:grid;gap:8px;margin-top:8px}.lsa-chances>div{padding:8px;border-bottom:1px solid #3b1b2e;font-size:11px}.lsa-preview{margin-top:10px;font-size:11px}.lsa-loot-row{padding:4px 0}.lsa-divider{grid-column:1/-1;border-top:2px solid #7b3558;margin:8px 0;padding-top:10px}</style></head>
+<style>.lsa-chance-panel{grid-column:1/-1;background:#180b15;border:1px solid #5f2a49;border-radius:14px;padding:12px}.lsa-chances{display:grid;gap:8px;margin-top:8px}.lsa-chances>div{padding:8px;border-bottom:1px solid #3b1b2e;font-size:11px}.lsa-preview{margin-top:10px;font-size:11px}.lsa-loot-row{padding:4px 0}.lsa-divider{grid-column:1/-1;border-top:2px solid #7b3558;margin:8px 0;padding-top:10px}</style>
+<script>
+window.LSA_WS_URL = (location.protocol === "https:" ? "wss://" : "ws://") +
+  location.host + "/ws?room=main";
+</script>
+</head>
 <body>
 <div class="decor">
  <span class="heart-float h1">♥</span><span class="heart-float h2">♥</span><span class="heart-float h3">♡</span><span class="heart-float h4">♥</span>

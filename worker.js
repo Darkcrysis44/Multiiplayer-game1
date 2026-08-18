@@ -1,210 +1,3 @@
-export class Room {
-  constructor(state) {
-    this.state = state;
-    this.clients = new Map();
-    this.players = new Map();
-  }
-
-  async fetch(request) {
-    if (request.headers.get("Upgrade") !== "websocket") {
-      return new Response("WebSocket only", { status: 426 });
-    }
-
-    const pair = new WebSocketPair();
-    const client = pair[0];
-    const server = pair[1];
-    server.accept();
-
-    const id = crypto.randomUUID();
-    const player = {
-      id, x: 400, y: 300, hp: 100, maxHp: 100,
-      angle: 0, weapon: "sword", lastAttack: 0
-    };
-
-    this.clients.set(id, server);
-    this.players.set(id, player);
-
-    this.send(id, {
-      type: "welcome",
-      id,
-      players: Object.fromEntries(this.players)
-    });
-    this.broadcast({ type: "playerJoined", player }, id);
-
-    server.addEventListener("message", event => {
-      try {
-        const msg = JSON.parse(event.data);
-        this.onMessage(id, msg);
-      } catch (_) {}
-    });
-
-    server.addEventListener("close", () => {
-      this.clients.delete(id);
-      this.players.delete(id);
-      this.broadcast({ type: "playerLeft", id });
-    });
-
-    return new Response(null, { status: 101, webSocket: client });
-  }
-
-  send(id, msg) {
-    const ws = this.clients.get(id);
-    if (!ws) return;
-    try { ws.send(JSON.stringify(msg)); } catch (_) {}
-  }
-
-  broadcast(msg, exceptId = null) {
-    const data = JSON.stringify(msg);
-    for (const [id, ws] of this.clients) {
-      if (id === exceptId) continue;
-      try { ws.send(data); } catch (_) {}
-    }
-  }
-
-  onMessage(id, msg) {
-    const p = this.players.get(id);
-    if (!p || !msg || typeof msg.type !== "string") return;
-
-    if (msg.type === "playerState") {
-      if (Number.isFinite(Number(msg.x))) p.x = Math.max(30, Math.min(770, Number(msg.x)));
-      if (Number.isFinite(Number(msg.y))) p.y = Math.max(60, Math.min(570, Number(msg.y)));
-      if (Number.isFinite(Number(msg.angle))) p.angle = Number(msg.angle);
-      p.weapon = msg.weapon === "bow" ? "bow" : "sword";
-      this.broadcast({ type: "state", players: Object.fromEntries(this.players) });
-      return;
-    }
-
-    if (msg.type === "playerAttack") this.attack(p, msg);
-  }
-
-  attack(p, msg) {
-    const now = Date.now();
-    const weapon = msg.weapon === "bow" ? "bow" : "sword";
-    const cooldown = weapon === "bow" ? 420 : 270;
-
-    if (p.hp <= 0 || now - p.lastAttack < cooldown) return;
-
-    p.lastAttack = now;
-    if (Number.isFinite(Number(msg.angle))) p.angle = Number(msg.angle);
-    p.weapon = weapon;
-
-    this.broadcast({
-      type: "attackConfirmed",
-      playerId: p.id,
-      attackId: msg.attackId || crypto.randomUUID(),
-      weapon
-    });
-
-    if (weapon === "bow") {
-      const a = p.angle;
-      const projectile = {
-        id: crypto.randomUUID(),
-        x: p.x + Math.cos(a) * 38,
-        y: p.y + Math.sin(a) * 38,
-        vx: Math.cos(a) * 7.2,
-        vy: Math.sin(a) * 7.2,
-        life: 2.4,
-        ownerId: p.id
-      };
-      this.broadcast({ type: "projectileSpawned", projectile });
-      this.state.storage.put("projectile:" + projectile.id, projectile);
-      this.schedule();
-      return;
-    }
-
-    const target = this.findSwordTarget(p);
-    if (!target) return;
-
-    target.hp = Math.max(0, target.hp - 14);
-    this.broadcast({
-      type: "hpChanged",
-      playerId: target.id,
-      hp: target.hp,
-      maxHp: target.maxHp
-    });
-  }
-
-  findSwordTarget(attacker) {
-    let best = null;
-    let bestDistance = Infinity;
-
-    for (const target of this.players.values()) {
-      if (target.id === attacker.id || target.hp <= 0) continue;
-
-      const dx = target.x - attacker.x;
-      const dy = target.y - attacker.y;
-      const distance = Math.hypot(dx, dy);
-
-      if (distance > 143) continue;
-
-      const targetAngle = Math.atan2(dy, dx);
-      const diff = Math.atan2(
-        Math.sin(targetAngle - attacker.angle),
-        Math.cos(targetAngle - attacker.angle)
-      );
-
-      if (Math.abs(diff) > 0.475) continue;
-
-      if (distance < bestDistance) {
-        best = target;
-        bestDistance = distance;
-      }
-    }
-    return best;
-  }
-
-  async alarm() {
-    await this.stepProjectiles();
-  }
-
-  async stepProjectiles() {
-    const list = await this.state.storage.list({ prefix: "projectile:" });
-
-    for (const [key, projectile] of list) {
-      projectile.x += projectile.vx * 3;
-      projectile.y += projectile.vy * 3;
-      projectile.life -= 0.05;
-
-      let hit = null;
-      for (const player of this.players.values()) {
-        if (player.id === projectile.ownerId || player.hp <= 0) continue;
-        if (Math.hypot(player.x - projectile.x, player.y - projectile.y) <= 24) {
-          hit = player;
-          break;
-        }
-      }
-
-      if (hit) {
-        hit.hp = Math.max(0, hit.hp - 16);
-        this.broadcast({
-          type: "hpChanged",
-          playerId: hit.id,
-          hp: hit.hp,
-          maxHp: hit.maxHp
-        });
-        this.broadcast({ type: "projectileRemoved", id: projectile.id });
-        await this.state.storage.delete(key);
-      } else if (projectile.life <= 0) {
-        this.broadcast({ type: "projectileRemoved", id: projectile.id });
-        await this.state.storage.delete(key);
-      } else {
-        await this.state.storage.put(key, projectile);
-      }
-    }
-
-    const remaining = await this.state.storage.list({
-      prefix: "projectile:",
-      limit: 1
-    });
-
-    if (remaining.size > 0) this.schedule();
-  }
-
-  schedule() {
-    return this.state.storage.setAlarm(Date.now() + 50);
-  }
-}
-
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -214,11 +7,257 @@ export default {
         return new Response("Expected WebSocket", { status: 426 });
       }
 
-      const roomName = (url.searchParams.get("room") || "love-sword-arena").slice(0, 64);
-      const id = env.ROOM.idFromName(roomName);
-      return env.ROOM.get(id).fetch(request);
+      const roomId = url.searchParams.get("room") || "main";
+      const id = env.GAME_ROOM.idFromName(roomId);
+      const stub = env.GAME_ROOM.get(id);
+      return stub.fetch(request);
     }
 
     return env.ASSETS.fetch(request);
   }
 };
+
+export class GameRoom {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+    this.clients = new Map();
+    this.players = new Map();
+    this.projectiles = new Map();
+    this.lastTick = Date.now();
+    this.nextProjectileId = 1;
+    this.ready = this.load();
+    state.blockConcurrencyWhile(async () => { await this.ready; });
+  }
+
+  async load() {
+    const saved = await this.state.storage.get("game");
+    if (!saved) return;
+    this.players = new Map(saved.players || []);
+    this.projectiles = new Map(saved.projectiles || []);
+    this.nextProjectileId = saved.nextProjectileId || 1;
+  }
+
+  async save() {
+    await this.state.storage.put("game", {
+      players: [...this.players],
+      projectiles: [...this.projectiles],
+      nextProjectileId: this.nextProjectileId
+    });
+  }
+
+  fetch(request) {
+    return this.ready.then(() => {
+      const pair = new WebSocketPair();
+      const [client, server] = Object.values(pair);
+      const url = new URL(request.url);
+      const room = url.searchParams.get("room") || "main";
+      const playerId = crypto.randomUUID();
+
+      server.accept();
+      this.clients.set(playerId, server);
+
+      this.players.set(playerId, {
+        id: playerId,
+        x: 200 + Math.random() * 300,
+        y: 200 + Math.random() * 200,
+        angle: 0,
+        hp: 100,
+        maxHp: 100,
+        radius: 18,
+        speed: 3.2,
+        damage: 20,
+        swordCooldown: 270,
+        bowCooldown: 420,
+        lastSword: 0,
+        lastBow: 0,
+        input: { up:false, down:false, left:false, right:false },
+        lastSeq: 0,
+        connected: true
+      });
+
+      server.addEventListener("message", e => this.onMessage(playerId, e.data));
+      server.addEventListener("close", () => this.disconnect(playerId));
+      server.addEventListener("error", () => this.disconnect(playerId));
+
+      server.send(JSON.stringify({
+        type: "welcome",
+        playerId,
+        state: this.snapshot()
+      }));
+      this.broadcast({ type:"playerJoined", player:this.players.get(playerId) }, playerId);
+      this.startTick();
+
+      return new Response(null, { status:101, webSocket:client });
+    });
+  }
+
+  startTick() {
+    if (this.tickRunning) return;
+    this.tickRunning = true;
+    const tick = async () => {
+      const now = Date.now();
+      const dt = Math.min(50, Math.max(0, now - this.lastTick));
+      this.lastTick = now;
+      this.simulate(dt);
+      if (this.clients.size) {
+        this.broadcast({ type:"stateSnapshot", state:this.snapshot() });
+        await this.save();
+        setTimeout(tick, 50);
+      } else {
+        this.tickRunning = false;
+        await this.save();
+      }
+    };
+    setTimeout(tick, 0);
+  }
+
+  onMessage(id, raw) {
+    let msg;
+    try { msg = JSON.parse(raw); } catch { return; }
+    const p = this.players.get(id);
+    if (!p) return;
+
+    if (msg.type === "input") {
+      const seq = Number(msg.seq) || 0;
+      if (seq <= p.lastSeq) return;
+      p.lastSeq = seq;
+      p.input = {
+        up: !!msg.up, down: !!msg.down,
+        left: !!msg.left, right: !!msg.right
+      };
+      if (Number.isFinite(msg.angle)) p.angle = msg.angle;
+      return;
+    }
+
+    if (msg.type === "playerAttack") {
+      if (msg.weapon === "sword") this.swordAttack(p);
+      if (msg.weapon === "bow") this.bowAttack(p);
+    }
+  }
+
+  simulate(dt) {
+    const seconds = dt / 1000;
+    for (const p of this.players.values()) {
+      if (p.hp <= 0) continue;
+      let dx = (p.input.right ? 1 : 0) - (p.input.left ? 1 : 0);
+      let dy = (p.input.down ? 1 : 0) - (p.input.up ? 1 : 0);
+      const len = Math.hypot(dx,dy) || 1;
+      p.x += (dx/len) * p.speed * 60 * seconds;
+      p.y += (dy/len) * p.speed * 60 * seconds;
+      p.x = Math.max(p.radius, Math.min(10000-p.radius, p.x));
+      p.y = Math.max(p.radius, Math.min(10000-p.radius, p.y));
+    }
+
+    for (const [id, a] of this.projectiles) {
+      a.x += a.vx * 60 * seconds;
+      a.y += a.vy * 60 * seconds;
+      a.life -= dt;
+      let hit = false;
+
+      if (a.life <= 0) hit = true;
+
+      if (!hit) {
+        for (const p of this.players.values()) {
+          if (p.id === a.ownerId || p.hp <= 0) continue;
+          if (Math.hypot(p.x-a.x,p.y-a.y) <= p.radius+a.radius) {
+            p.hp = Math.max(0, p.hp-a.damage);
+            this.broadcast({type:"playerHpChanged", playerId:p.id, hp:p.hp});
+            this.broadcast({type:"projectileHit", projectileId:id, targetId:p.id});
+            hit = true;
+            break;
+          }
+        }
+      }
+      if (hit) this.projectiles.delete(id);
+    }
+  }
+
+  swordAttack(attacker) {
+    const now = Date.now();
+    if (now-attacker.lastSword < attacker.swordCooldown || attacker.hp<=0) return;
+    attacker.lastSword = now;
+
+    const range = 125;
+    const halfAngle = 0.95/2;
+    let target = null, best = Infinity;
+
+    for (const p of this.players.values()) {
+      if (p.id===attacker.id || p.hp<=0) continue;
+      const dx=p.x-attacker.x, dy=p.y-attacker.y;
+      const d=Math.hypot(dx,dy);
+      if (d > range+p.radius) continue;
+      const a=Math.atan2(dy,dx);
+      const diff=Math.atan2(Math.sin(a-attacker.angle),Math.cos(a-attacker.angle));
+      if (Math.abs(diff)>halfAngle) continue;
+      if (d<best) { best=d; target=p; }
+    }
+
+    if (target) {
+      target.hp=Math.max(0,target.hp-attacker.damage);
+      this.broadcast({
+        type:"playerHpChanged",
+        playerId:target.id,
+        hp:target.hp,
+        attackerId:attacker.id,
+        weapon:"sword"
+      });
+    }
+
+    this.broadcast({
+      type:"playerAttackConfirmed",
+      playerId:attacker.id,
+      weapon:"sword",
+      attackTime:now
+    });
+  }
+
+  bowAttack(attacker) {
+    const now=Date.now();
+    if (now-attacker.lastBow<attacker.bowCooldown || attacker.hp<=0) return;
+    attacker.lastBow=now;
+
+    const speed=7.2;
+    const x=attacker.x+Math.cos(attacker.angle)*24;
+    const y=attacker.y+Math.sin(attacker.angle)*24;
+    const id=String(this.nextProjectileId++);
+
+    this.projectiles.set(id,{
+      id, ownerId:attacker.id, x,y,
+      vx:Math.cos(attacker.angle)*speed,
+      vy:Math.sin(attacker.angle)*speed,
+      radius:5, damage:20, life:2400
+    });
+
+    this.broadcast({type:"arrowSpawned", projectile:this.projectiles.get(id)});
+  }
+
+  disconnect(id) {
+    this.clients.delete(id);
+    const p=this.players.get(id);
+    if (p) {
+      this.players.delete(id);
+      this.broadcast({type:"playerLeft", playerId:id});
+    }
+    if (!this.clients.size) this.save();
+  }
+
+  snapshot() {
+    return {
+      players:[...this.players.values()].map(p => ({
+        id:p.id,x:p.x,y:p.y,angle:p.angle,hp:p.hp,maxHp:p.maxHp
+      })),
+      projectiles:[...this.projectiles.values()]
+    };
+  }
+
+  broadcast(obj, exceptId=null) {
+    const text=JSON.stringify(obj);
+    for (const [id,ws] of this.clients) {
+      if (id===exceptId) continue;
+      try { ws.send(text); } catch {}
+    }
+  }
+}
+
+export { GameRoom as GAME_ROOM };
