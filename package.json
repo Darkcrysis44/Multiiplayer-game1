@@ -1,11 +1,7 @@
 {
-  "name": "love-sword-arena-multiplayer",
+  "name": "love-sword-arena-cloudflare",
   "version": "1.0.0",
   "private": true,
-  "scripts": {
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "ws": "^8.18.0"
-  }
+  "scripts": { "dev": "wrangler dev", "deploy": "wrangler deploy" },
+  "devDependencies": { "wrangler": "^4.34.0" }
 }

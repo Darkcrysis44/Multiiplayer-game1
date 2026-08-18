@@ -1,43 +1,38 @@
-# Love Sword Arena — Co-op Multiplayer Edition
+# Love Sword Arena — Cloudflare Multiplayer v14
 
-Bu sürüm mevcut solo arena sistemini korur ve üstüne oda tabanlı co-op multiplayer ekler.
+Bu paket Cloudflare Workers/Assets için hazırlanmıştır. Önceki sürümdeki `server.js + ws` Node sunucusu Cloudflare Pages/Workers deploy'una uygun olmadığı için kaldırıldı. Artık WebSocket endpoint'i `/ws` üzerinden Worker tarafından yönetiliyor.
 
-## Özellikler
-- Aynı `index.html` içindeki mevcut solo level/XP/rebirth/gear/shop sistemi korunur.
-- Oda kodu ile 2+ oyuncu aynı maça bağlanabilir.
-- İlk giren oyuncu host olur; düşerse/disconnect olursa sıradaki oyuncuya host rolü aktarılır.
-- Host düşmanların, wave'in ve projectile dünyasının otoritesidir; diğer oyuncular kendi inputlarını host'a yollar.
-- Oyuncular aynı arena içinde görünür.
-- Solo level, XP, rebirth, silah, armor, accessory ve passive ilerlemesi oyuncunun kendi tarayıcısında korunur.
-- Oyuncu ölünce klasik solo reset yerine **DOWNED** durumuna geçer.
-- Yakındaki yaşayan takım arkadaşı `E` ile veya paneldeki revive düğmesiyle oyuncuyu yaklaşık %45 HP ile diriltebilir.
-- Wave/world snapshot host tarafından yaklaşık 11 FPS civarında paylaşılır.
-- Host ayrılırsa server yeni host seçer ve mevcut world snapshot'ını yeni host'a gönderir.
+## Cloudflare deploy
 
-## Çalıştırma
-Node.js 18+ kurulu olmalı.
+Bu klasörü GitHub'a yükleyip Cloudflare Workers'ta `wrangler deploy` ile deploy edebilirsin.
+
+Yerel:
 
 ```bash
 npm install
-npm start
+npm run dev
 ```
 
-Sonra tarayıcıda:
-`http://localhost:8787/`
+Deploy:
 
-İki farklı cihaz aynı LAN'daysa server bilgisayarının LAN IP'si üzerinden:
-`http://SUNUCU-IP:8787/`
+```bash
+npm run deploy
+```
 
-İnternet üzerinden oynatmak için bu Node sunucusunu HTTPS/WSS destekleyen bir hosting'e koymak gerekir. `PORT` environment variable ile port değiştirilebilir.
+Cloudflare Dashboard'dan Git entegrasyonu kullanıyorsan build command olarak `npm run deploy` ve framework preset olarak Workers/None kullan. `wrangler.jsonc` dosyası root'ta kalmalı.
 
-## Oyun akışı
-1. Love Sword Arena'yı aç.
-2. Multiplayer kartından `CREATE ROOM` veya aynı oda kodunu girip `JOIN` seç.
-3. Diğer oyuncular aynı kodla bağlansın.
-4. İlk oyuncu host olur ve düşman dünyasını simüle eder.
-5. Wave temizlenince host'un wave-upgrade ekranı açılır; oyuncuların kalıcı level/gear ilerlemeleri korunur.
-6. Bir oyuncu 0 HP olduğunda downed olur. Yakındaki takım arkadaşı E'ye basarak revive gönderir.
-7. Host ayrılırsa oda içindeki sonraki oyuncu host olur.
+## Multiplayer reward sistemi
 
-## Not
-Bu sürüm dışarıdan bir matchmaking servisi gerektirmez; `server.js` küçük bir WebSocket oda sunucusudur. Production için HTTPS reverse proxy, rate limiting, authentication ve server-side anti-cheat eklenmesi önerilir.
+Bir oyuncu düşmanı öldürdüğünde:
+- öldüren oyuncu: **%100 XP + %100 para**
+- diğer tüm oyuncular: **%75 XP + %75 para**
+
+Örneğin 100 XP / 40 para veren düşman:
+- Killer → 100 XP + 40 para
+- diğer oyuncu → 75 XP + 30 para
+
+Bu ödül server tarafından dağıtıldığı için her oyuncu kendi client'ından sahte reward üretmeye çalışmamalı; production'da ayrıca server-side combat validation önerilir.
+
+## Önemli
+
+Cloudflare Worker'daki oda state'i şu an Worker isolate belleğindedir. Küçük/tek-isolate testleri için yeterlidir. Gerçek production multiplayer için Cloudflare Durable Objects ile oda başına kalıcı WebSocket state'e geçirmek önerilir.

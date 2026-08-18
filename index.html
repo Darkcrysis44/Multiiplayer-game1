@@ -889,7 +889,7 @@ function damageEnemy(e,dmg,creditId=null){
  if(e.hp<=0){
   let reward=(e.boss?80+arena.wave*8:3+Math.floor(arena.wave*.9));if(hasPassive('fortune'))reward=Math.ceil(reward*1.15);
   const xp=(e.boss?180:25)+arena.wave*6;
-  if(creditId&&mp.host)mpSend('reward',{target:creditId,gold:reward,xp});
+  if(mp.connected&&mp.host){const killerId=creditId||mp.id;mpSend('reward',{target:killerId,gold:reward,xp});}
   else{addArenaMoney(reward);gainXp(xp);if(hasPassive('vamp'))arena.player.hp=Math.min(combatStats().maxHp,arena.player.hp+combatStats().maxHp*.04)}
   arena.kills++;burst(e.x,e.y,e.boss?35:18,'death');
   if(e.type==='splitter'&&!e.boss&&arena.enemies.length<15){for(let i=0;i<2;i++)arena.enemies.push({x:e.x+(i?14:-14),y:e.y,hp:e.maxHp*.22,maxHp:e.maxHp*.22,r:13,speed:e.speed*1.5,atk:e.atk*.55,hit:0,attack:.3,variant:Math.random(),type:'broken',boss:false,bossIndex:-1,bossDef:null,specialCd:2,poison:0,name:'Broken Heart',rarity:'Common'})}
@@ -1087,7 +1087,7 @@ $('lsaSkillUse').onclick=useSkill;arenaCanvas.addEventListener('touchstart',e=>{
    - guests send input/attack/revive intents
    - every player keeps the same permanent arenaState progression locally
    ============================================================ */
-const MP_URL=(location.protocol==='file:'?'ws://localhost:8787':((location.protocol==='https:'?'wss://':'ws://')+location.host));
+const MP_URL=(location.protocol==='file:'?'ws://localhost:8787/ws':((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws'));
 const mp={ws:null,id:null,room:null,host:false,connected:false,players:{},remoteInputs:{},lastInput:0,lastSnap:0,attackNonce:0};
 arena.remotePlayers=arena.remotePlayers||{};
 arena.down=false;
@@ -1116,7 +1116,7 @@ function mpHandle(m){
  if(m.type==='input'&&mp.host){mp.remoteInputs[m.id]=m;if(arena.remotePlayers[m.id])Object.assign(arena.remotePlayers[m.id],m.player||{});return}
  if(m.type==='attack'&&mp.host){mpRemoteAttack(m.id,m.angle,m.weapon);return}
  if(m.type==='revive'){mpReviveLocal(m.target);return}
- if(m.type==='reward'&&m.target===mp.id){addArenaMoney(Number(m.gold||0));gainXp(Number(m.xp||0));return}
+ if(m.type==='reward'&&m.target===mp.id){addArenaMoney(Number(m.gold||0));gainXp(Number(m.xp||0));mpLog('Reward: +'+Number(m.gold||0)+' 💗 / +'+Number(m.xp||0)+' XP ('+Math.round(Number(m.factor||1)*100)+'%)');return}
  if(m.type==='snapshot'&&!mp.host){applyMpSnapshot(m);return}
  if(m.type==='host_changed'){mp.host=m.host===mp.id;mpSetStatus(mp.host?'HOST':'ONLINE',true);mpLog(mp.host?'You are now the host.':'Host changed.');}
 }
