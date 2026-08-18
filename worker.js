@@ -96,6 +96,7 @@ export class Room {
       if(p.downed){p.ix=0;p.iy=0;return}
       p.ix=clamp(Number(m.x)||0,-1,1);p.iy=clamp(Number(m.y)||0,-1,1);return;
     }
+    if(m.type==='weaponChange' && !p.downed){p.weapon=String(m.weapon||'sword')==='bow'?'bow':'sword';this.broadcastState(true);return;}
     if(m.type==='attack' && this.phase==='battle' && !p.downed){this.serverAttack(p,m);return;}
     if(m.type==='skill' && this.phase==='battle' && !p.downed){this.serverSkill(p,m);return;}
     if(m.type==='upgradePick' && this.phase==='upgrade' && this.offer && m.offerId===this.offer.id && !this.picks.has(id)){
@@ -368,7 +369,7 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       if(!target)continue;
       const dx=target.x-e.x,dy=target.y-e.y,d=Math.hypot(dx,dy)||1,contact=e.boss?72:46;
       if(!e.dashT&&!e.chargeT&&d>contact){e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt}
-      else{e.attack-=dt;if(e.attack<=0){e.attack=e.boss?1.5:.9;const dmg=Math.max(1,e.atk-target.armor*.7);target.hp=Math.max(0,target.hp-dmg);if(target.hp<=0){target.hp=0;target.downed=true;target.reviveProgress=0;target.ix=0;target.iy=0;this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y})}}}
+      else{e.attack-=dt;if(e.attack<=0){e.attack=e.boss?1.5:.9;const dmg=Math.max(1,e.atk-target.armor*.7);target.hp=Math.max(0,target.hp-dmg);this.broadcast({type:'enemyAttack',enemyId:e.id,playerId:target.id,damage:dmg,x:target.x,y:target.y,serverNow:now});if(target.hp<=0){target.hp=0;target.downed=true;target.reviveProgress=0;target.ix=0;target.iy=0;this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y})}}}
       e.x=clamp(e.x,-60,WIDTH+60);e.y=clamp(e.y,-60,HEIGHT+60);e.hit=Math.max(0,e.hit-dt);
     }
     const targetCount=this.wave%5===0?1:this.wave*3+4;
