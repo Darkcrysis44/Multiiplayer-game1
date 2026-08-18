@@ -132,6 +132,8 @@ export class Room {
       hp*=bossDef.hp;spd*=bossDef.spd;atk*=bossDef.atk;r=44;
     }else{const t=TYPES[type]||TYPES.broken;hp*=t[1];spd*=t[2];r=t[3];if(type==='charger')atk*=1.15;if(type==='tank')atk*=1.35;if(type==='duelist')atk*=1.65;if(type==='assassin')atk*=2;if(type==='brute')atk*=1.7;if(type==='lovebreaker')atk*=3;if(type==='berserker')atk*=2.35;if(type==='lancer')atk*=1.9;if(type==='witch')atk*=1.45}
     this.enemies.push({id:'e'+this.nextEnemy++,x,y,hp,maxHp:hp,r,speed:spd,atk,hit:0,attack:.7+Math.random(),type,boss:type==='boss',bossIndex:type==='boss'?Math.floor(this.wave/5)-1:-1,bossDef:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length]:null,
+lastShot:0,shootRange:type==='archer'?300:type==='mage'?330:250,keepDistance:type==='archer'||type==='mage',
+specialCd:type==='boss'?1.8+Math.random()*1.2:99,contactDamage:0,inContact:false,
 name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:(TYPES[type]?.[4]||'Broken Heart'),rarity:type==='boss'?'Legendary':(TYPES[type]?.[5]||'Common')});this.spawned++;
   }
   xpNeed(level){return Math.floor(100*Math.pow(1.12,Math.max(0,level-1)))}
@@ -174,49 +176,65 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
   serverSkill(p,m){
     const now=Date.now();
     if(p.skillCd>0)return;
-    const requestedSkill=String(m.skill||p.skill||'');
-    const SKILL_ALIASES={
-      nova:'nova', dash:'dash', barrage:'barrage', moon:'moon', storm:'storm',
-      bloom:'moon', break:'barrage', eclipse:'storm', divine:'nova', cataclysm:'moon'
-    };
-    const skill=SKILL_ALIASES[requestedSkill]||'';
+    const skill=String(m.skill||p.skill||'');
     const angle=Number.isFinite(Number(m.angle))?Number(m.angle):p.angle;
     p.angle=angle;
     const stats=p.atk;
-    const defs={nova:{cd:8},dash:{cd:5},barrage:{cd:10},moon:{cd:7},storm:{cd:12}};
-    if(!skill)return;
+    const defs={nova:{cd:8},dash:{cd:5},barrage:{cd:10},moon:{cd:7},storm:{cd:12},bloom:{cd:9},break:{cd:11},eclipse:{cd:14},divine:{cd:18},cataclysm:{cd:16}};
+    if(!defs[skill])return;
     p.skillCd=defs[skill].cd;
     const hitIds=[];
-    const damage=(e,mult)=>{if(!e||e.hp<=0)return;let d=stats*mult;if(Math.random()<p.crit)d*=2;e.hp=Math.max(0,e.hp-d);e.hit=.12;hitIds.push({id:e.id,damage:d});};
-    if(skill==='nova'){
-      for(const e of this.enemies)if(dist(e,p)<190)damage(e,3);
-      this.broadcast({type:'skillFx',skill:requestedSkill,baseSkill:skill,from:p.id,x:p.x,y:p.y,angle,hitIds,serverNow:now});
-    }else if(skill==='barrage'){
-      for(let j=-2;j<=2;j++){
-        const a=angle+j*.18;
-        for(const e of this.enemies){
-          const dx=e.x-p.x,dy=e.y-p.y,d=Math.hypot(dx,dy);
-          let da=Math.atan2(dy,dx)-a;da=Math.atan2(Math.sin(da),Math.cos(da));
-          if(d<165&&Math.abs(da)<.65)damage(e,2.2);
-        }
+    const damage=(e,mult)=>{
+      if(!e||e.hp<=0)return;
+      let d=stats*mult;if(Math.random()<p.crit)d*=2;if(e.shieldT>0)d*=.35;
+      e.hp=Math.max(0,e.hp-d);e.hit=.12;hitIds.push({id:e.id,damage:d});
+    };
+    const hitRadius=(radius,mult)=>{for(const e of this.enemies)if(dist(e,p)<radius)damage(e,mult)};
+    const cone=(range,width,mult)=>{
+      for(const e of this.enemies){
+        const dx=e.x-p.x,dy=e.y-p.y,d=Math.hypot(dx,dy);if(d>range)continue;
+        let da=Math.atan2(dy,dx)-angle;da=Math.atan2(Math.sin(da),Math.cos(da));
+        if(Math.abs(da)<width)damage(e,mult);
       }
-      this.broadcast({type:'skillFx',skill:requestedSkill,baseSkill:skill,from:p.id,x:p.x,y:p.y,angle,hitIds,serverNow:now});
-    }else if(skill==='moon'){
-      const proj={id:'s'+(++this.attackSeq),owner:p.id,x:p.x,y:p.y,vx:Math.cos(angle)*7,vy:Math.sin(angle)*7,angle,life:2.2,damage:stats*5,skill:'moon',radius:18};
-      this.projectiles.push(proj);
-      this.broadcast({type:'skillFx',skill:requestedSkill,baseSkill:skill,from:p.id,x:p.x,y:p.y,angle,projectile:proj,serverNow:now});
-    }else if(skill==='storm'){
-      for(const e of this.enemies)if(dist(e,p)<260)damage(e,2.5);
-      this.broadcast({type:'skillFx',skill:requestedSkill,baseSkill:skill,from:p.id,x:p.x,y:p.y,angle,hitIds,serverNow:now});
+    };
+
+    if(skill==='nova'){
+      hitRadius(190,3);
     }else if(skill==='dash'){
-      p.x=clamp(p.x+Math.cos(angle)*180,30,WIDTH-30);p.y=clamp(p.y+Math.sin(angle)*180,62,HEIGHT-30);
-      for(const e of this.enemies)if(dist(e,p)<75)damage(e,2);
-      this.broadcast({type:'skillFx',skill:requestedSkill,baseSkill:skill,from:p.id,x:p.x,y:p.y,angle,hitIds,serverNow:now});
+      p.x=clamp(p.x+Math.cos(angle)*180,30,WIDTH-30);p.y=clamp(p.y+Math.sin(angle)*180,62,HEIGHT-30);hitRadius(75,2);
+    }else if(skill==='barrage'){
+      for(let j=-2;j<=2;j++){const a=angle+j*.18;for(const e of this.enemies){
+        const dx=e.x-p.x,dy=e.y-p.y,d=Math.hypot(dx,dy);let da=Math.atan2(dy,dx)-a;da=Math.atan2(Math.sin(da),Math.cos(da));
+        if(d<165&&Math.abs(da)<.65)damage(e,2.2);
+      }}
+    }else if(skill==='moon'){
+      this.projectiles.push({id:'s'+(++this.attackSeq),owner:p.id,x:p.x,y:p.y,vx:Math.cos(angle)*7,vy:Math.sin(angle)*7,angle,life:2.2,damage:stats*5,skill:'moon',radius:18});
+    }else if(skill==='storm'){
+      hitRadius(260,2.5);
+      for(let i=0;i<10;i++){const a=Math.random()*Math.PI*2,d=70+Math.random()*220;
+        this.projectiles.push({id:'s'+(++this.attackSeq),owner:p.id,x:p.x+Math.cos(a)*d,y:p.y+Math.sin(a)*d,vx:0,vy:0,angle:a,life:1,damage:stats*1.5,skill:'storm',rain:true,radius:20});
+      }
+    }else if(skill==='bloom'){
+      // Lunar Bloom: forward crescent plus a small heal.
+      cone(210,.9,2.8);p.hp=Math.min(p.maxHp,p.hp+p.maxHp*.18);
+    }else if(skill==='break'){
+      // Passion Break: narrow heavy strike with knockback.
+      cone(220,.42,4.6);
+      for(const e of this.enemies)if(e.hp>0&&dist(e,p)<220){const dx=e.x-p.x,dy=e.y-p.y,d=Math.hypot(dx,dy)||1;e.x=clamp(e.x+dx/d*35,0,WIDTH);e.y=clamp(e.y+dy/d*35,62,HEIGHT)}
+    }else if(skill==='eclipse'){
+      // Heart Eclipse: crossing waves, intentionally different from Barrage.
+      for(const off of [0,Math.PI/2])for(let j=-1;j<=1;j++){const a=angle+off+j*.28;for(const e of this.enemies){
+        const dx=e.x-p.x,dy=e.y-p.y,d=Math.hypot(dx,dy);let da=Math.atan2(dy,dx)-a;da=Math.atan2(Math.sin(da),Math.cos(da));
+        if(d<235&&Math.abs(da)<.30)damage(e,2.0);
+      }}
+    }else if(skill==='divine'){
+      p.hp=Math.min(p.maxHp,p.hp+p.maxHp*.35);hitRadius(155,2.4);
+    }else if(skill==='cataclysm'){
+      for(const e of this.enemies){const d=dist(e,p);if(d<330&&d>120)damage(e,3.2);else if(d<=120)damage(e,5.2)}
     }
-    for(const h of hitIds){
-      const e=this.enemies.find(q=>q.id===h.id);
-      if(e&&e.hp<=0)this.killEnemy(e,p.id);
-    }
+
+    for(const h of hitIds){const e=this.enemies.find(q=>q.id===h.id);if(e&&e.hp<=0)this.killEnemy(e,p.id)}
+    this.broadcast({type:'skillFx',skill,baseSkill:skill,from:p.id,x:p.x,y:p.y,angle,hitIds,heal:p.hp,serverNow:now});
     this.broadcastState(true);
   }
   serverAttack(p,m){
@@ -368,8 +386,59 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       let target=null,bd=Infinity;for(const p of this.players.values()){if(p.downed)continue;const d=dist(e,p);if(d<bd){bd=d;target=p}}
       if(!target)continue;
       const dx=target.x-e.x,dy=target.y-e.y,d=Math.hypot(dx,dy)||1,contact=e.boss?72:46;
-      if(!e.dashT&&!e.chargeT&&d>contact){e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt}
-      else{e.attack-=dt;if(e.attack<=0){e.attack=e.boss?1.5:.9;const dmg=Math.max(1,e.atk-target.armor*.7);target.hp=Math.max(0,target.hp-dmg);this.broadcast({type:'enemyAttack',enemyId:e.id,playerId:target.id,damage:dmg,x:target.x,y:target.y,serverNow:now});if(target.hp<=0){target.hp=0;target.downed=true;target.reviveProgress=0;target.ix=0;target.iy=0;this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y})}}}
+      
+      // Ranged enemies keep their distance and fire authoritative projectiles.
+      if(e.keepDistance && !e.dashT && !e.chargeT){
+        const shootRange=e.shootRange||250;
+        const preferred=e.type==='archer'?220:280;
+        if(d<preferred){
+          e.x-=dx/d*e.speed*60*dt*1.35;e.y-=dy/d*e.speed*60*dt*1.35;
+        }else if(d>shootRange){
+          e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt;
+        }
+        e.lastShot=(e.lastShot||0)+dt;
+        const shotCd=e.type==='archer'?1.25:2.0;
+        if(e.lastShot>=shotCd && d<=shootRange){
+          e.lastShot=0;
+          const a=Math.atan2(dy,dx),count=e.type==='mage'?3:1;
+          const speed=e.type==='mage'?3.8:5.2,damageMult=e.type==='mage'?.9:.8;
+          for(let j=0;j<count;j++){
+            const aa=a+(count>1?(j-(count-1)/2)*.22:0);
+            this.projectiles.push({id:'b'+(++this.attackSeq),owner:'enemy',source:e.id,
+              x:e.x+Math.cos(aa)*18,y:e.y+Math.sin(aa)*18,vx:Math.cos(aa)*speed,vy:Math.sin(aa)*speed,
+              angle:aa,life:2.6,damage:e.atk*damageMult,radius:e.type==='mage'?10:8,crit:false,
+              kind:e.type==='mage'?'magic':'arrow'});
+          }
+          this.broadcast({type:'enemyShoot',enemyId:e.id,x:e.x,y:e.y,angle:a,count,speed,
+            kind:e.type==='mage'?'magic':'arrow',serverNow:now});
+        }
+      }else if(!e.dashT&&!e.chargeT){
+        if(d>contact){e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt}
+      }
+
+      // Melee enemies hit on the first frame they actually touch the player.
+      const touching=d<contact;
+      if(touching && !e.inContact && !e.keepDistance){
+        e.inContact=true;e.contactDamage=0;
+        const dmg=Math.max(1,e.atk-target.armor*.7);
+        target.hp=Math.max(0,target.hp-dmg);
+        this.broadcast({type:'enemyAttack',enemyId:e.id,playerId:target.id,damage:dmg,x:target.x,y:target.y,serverNow:now});
+        if(target.hp<=0){target.hp=0;target.downed=true;target.reviveProgress=0;target.ix=target.iy=0;
+          this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y})}
+      }else if(!touching){
+        e.inContact=false;e.contactDamage=0;
+      }else if(touching && !e.keepDistance){
+        e.contactDamage=(e.contactDamage||0)+dt;
+        if(e.contactDamage>=0.65){
+          e.contactDamage=0;
+          const dmg=Math.max(1,e.atk*.55-target.armor*.35);
+          target.hp=Math.max(0,target.hp-dmg);
+          this.broadcast({type:'enemyAttack',enemyId:e.id,playerId:target.id,damage:dmg,x:target.x,y:target.y,serverNow:now});
+          if(target.hp<=0){target.hp=0;target.downed=true;target.reviveProgress=0;target.ix=target.iy=0;
+            this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y})}
+        }
+      }
+
       e.x=clamp(e.x,-60,WIDTH+60);e.y=clamp(e.y,-60,HEIGHT+60);e.hit=Math.max(0,e.hit-dt);
     }
     const targetCount=this.wave%5===0?1:this.wave*3+4;
@@ -378,7 +447,7 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     if(now-this.lastState>=STATE_MS)this.broadcastState(false)
   }
   snapshotFor(id){const p=this.players.get(id);return this.makeState(p)}
-  makeState(p){return {phase:this.phase,wave:this.wave,stateSeq:this.stateSeq,serverNow:Date.now(),player:p?{x:p.x,y:p.y,hp:p.hp,maxHp:p.maxHp,angle:p.angle,atk:p.atk,spd:p.spd,armor:p.armor,crit:p.crit,weapon:p.weapon||'sword',skill:p.skill||'',skillCd:p.skillCd||0,downed:!!p.downed,reviveProgress:p.reviveProgress||0,progression:this.progression(p)}:null,players:[...this.players.values()].map(q=>({id:q.id,name:q.name,x:q.x,y:q.y,hp:q.hp,maxHp:q.maxHp,angle:q.angle,weapon:q.weapon||'sword',skill:q.skill||'',skillCd:q.skillCd||0,downed:!!q.downed,reviveProgress:q.reviveProgress||0,level:q.level||1,xp:q.xp||0,rebirths:q.rebirths||0,mult:q.mult||1,progressRev:q.progressRev||0})),enemies:this.enemies,projectiles:this.projectiles.map(a=>({id:a.id,owner:a.owner,x:a.x,y:a.y,vx:a.vx,vy:a.vy,angle:a.angle,life:a.life}))}}
+  makeState(p){return {phase:this.phase,wave:this.wave,stateSeq:this.stateSeq,serverNow:Date.now(),player:p?{x:p.x,y:p.y,hp:p.hp,maxHp:p.maxHp,angle:p.angle,atk:p.atk,spd:p.spd,armor:p.armor,crit:p.crit,weapon:p.weapon||'sword',skill:p.skill||'',skillCd:p.skillCd||0,downed:!!p.downed,reviveProgress:p.reviveProgress||0,progression:this.progression(p)}:null,players:[...this.players.values()].map(q=>({id:q.id,name:q.name,x:q.x,y:q.y,hp:q.hp,maxHp:q.maxHp,angle:q.angle,weapon:q.weapon||'sword',skill:q.skill||'',skillCd:q.skillCd||0,downed:!!q.downed,reviveProgress:q.reviveProgress||0,level:q.level||1,xp:q.xp||0,rebirths:q.rebirths||0,mult:q.mult||1,progressRev:q.progressRev||0})),enemies:this.enemies,projectiles:this.projectiles.map(a=>({id:a.id,owner:a.owner,source:a.source,x:a.x,y:a.y,vx:a.vx,vy:a.vy,angle:a.angle,life:a.life,kind:a.kind||null,skill:a.skill||null,radius:a.radius||8}))}}
   broadcastState(force=false){
     const now=Date.now();
     if(!force && now-this.lastState<STATE_MS)return;
