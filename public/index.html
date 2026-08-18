@@ -768,7 +768,6 @@ const arenaState={
 };
 let arena={running:false,wave:1,enemies:[],projectiles:[],particles:[],slashes:[],keys:{},last:0,spawned:0,kills:0,shake:0,mouseX:0,mouseY:0,player:{x:0,y:0,hp:100,dir:1,angle:0,attackCd:0,slashT:0,inv:0,skillCd:0}};
 let arenaAudio=null;
-let coopServerStats=null;
 function saveArena(){
   arenaState.profileVersion=3;
   arenaState.lastSavedAt=Date.now();
@@ -782,11 +781,13 @@ function applyProgressionSnapshot(pr,source='sync'){
   if(source==='server'&&incomingRev<localRev)return;
   const nextLevel=Math.max(1,Number(pr.level)||1), nextXp=Math.max(0,Number(pr.xp)||0);
   const oldLevel=Math.max(1,Number(arenaState.level)||1);
-  if(nextLevel>oldLevel){
+  // Only apply stat gains for local level ups, never from server syncs
+  if(nextLevel>oldLevel && source!=='server'){
     for(let lv=oldLevel+1;lv<=nextLevel;lv++){const scale=Number(arenaState.mult||1);arenaState.stats.maxHp+=Math.round(12*scale);arenaState.stats.atk+=Math.round(2.5*scale*10)/10;arenaState.stats.spd+=.05*scale;arenaState.stats.armor+=.35*scale;}
     if(!coopSocket||coopSocket.readyState!==1)arena.player.hp=arenaState.stats.maxHp;
     if(nextLevel>oldLevel){sfx('level');toast('LEVEL UP! ✨ Lv '+nextLevel);arenaLog('Level '+nextLevel+' synced from '+source+'.');}
   }
+  // Server syncs only update level/xp/rebirths/mult, never stats
   arenaState.level=nextLevel;arenaState.xp=nextXp;arenaState.lastProgressRev=Math.max(localRev,incomingRev);
   if(Number.isFinite(Number(pr.rebirths)))arenaState.rebirths=Math.max(0,Number(pr.rebirths));
   if(Number.isFinite(Number(pr.mult)))arenaState.mult=Math.max(1,Number(pr.mult));
@@ -802,7 +803,7 @@ const passiveDefs={
  iron:'Iron Heart',sharp:'Sharp Love',swift:'Swift Heart',crit:'Critical Kiss',thorn:'Thorn Armor',guardian:'Guardian Soul',vamp:'Vampire Rose',fortune:'Fortune Heart'
 };
 function hasPassive(id){return arenaState.passives.includes(id)}
-function combatStats(){if(coopSocket&&coopServerStats)return Object.assign({},coopServerStats);const b=arenaState.stats,r=arenaState.waveUpgrades||{};let st={maxHp:b.maxHp+r.hp,atk:b.atk+r.atk,spd:b.spd+r.spd,crit:Math.min(.95,b.crit+r.crit),armor:b.armor+r.armor};if(hasPassive('iron'))st.maxHp*=1.10;if(hasPassive('sharp'))st.atk*=1.12;if(hasPassive('swift'))st.spd*=1.08;if(hasPassive('crit'))st.crit=Math.min(.95,st.crit+.05);if(hasPassive('thorn'))st.armor*=1.15;if(hasPassive('eternal')){st.maxHp*=1.06;st.atk*=1.06;st.spd*=1.06;st.crit=Math.min(.95,st.crit+.02);st.armor*=1.06}return st}
+function combatStats(){const b=arenaState.stats,r=arenaState.waveUpgrades||{};let st={maxHp:b.maxHp+r.hp,atk:b.atk+r.atk,spd:b.spd+r.spd,crit:Math.min(.95,b.crit+r.crit),armor:b.armor+r.armor};if(hasPassive('iron'))st.maxHp*=1.10;if(hasPassive('sharp'))st.atk*=1.12;if(hasPassive('swift'))st.spd*=1.08;if(hasPassive('crit'))st.crit=Math.min(.95,st.crit+.05);if(hasPassive('thorn'))st.armor*=1.15;if(hasPassive('eternal')){st.maxHp*=1.06;st.atk*=1.06;st.spd*=1.06;st.crit=Math.min(.95,st.crit+.02);st.armor*=1.06}return st}
 function resetWaveUpgrades(){arenaState.waveUpgrades={hp:0,atk:0,spd:0,crit:0,armor:0}}
 function arenaStats(){const s=combatStats();$('lsaHpText').textContent=Math.max(0,Math.ceil(arena.player.hp))+' / '+Math.ceil(s.maxHp);$('lsaHpBar').style.width=Math.max(0,arena.player.hp/s.maxHp*100)+'%';$('lsaAtk').textContent=s.atk.toFixed(1);$('lsaSpd').textContent=s.spd.toFixed(1);$('lsaCrit').textContent=Math.round(s.crit*100)+'%';$('lsaArmor').textContent=s.armor.toFixed(1);$('lsaGold').textContent=loveBalance;$('lsaWave').textContent=arena.wave;$('lsaLevel').textContent=arenaState.level;$('lsaRebirth').textContent=arenaState.rebirths;$('lsaXpText').textContent=arenaState.xp+' / '+xpNeed();$('lsaXpBar').style.width=Math.min(100,arenaState.xp/xpNeed()*100)+'%';$('lsaMult').textContent='×'+arenaState.mult.toFixed(2);$('lsaWeapon').textContent=(arenaState.activeWeapon||'Rose Blade')+' ['+(arenaState.activeWeaponType==='bow'?'2':'1')+']';$('lsaArmorName').textContent=arenaState.gear.armor;$('lsaAcc').textContent=arenaState.gear.acc;$('lsaRebirthBtn').disabled=arenaState.level<50;const sk=arenaState.skills[0];$('lsaSkillName').textContent=sk?sk.name:'None';$('lsaSkillCd').textContent=sk?(arena.player.skillCd>0?arena.player.skillCd.toFixed(1)+'s':'Ready'):'Buy in Shop';$('lsaSkillUse').disabled=!sk||arena.player.skillCd>0||!arena.running}
 function arenaLog(t){const l=$('lsaLog');l.innerHTML='<div>• '+t+'</div>'+l.innerHTML}
@@ -992,7 +993,7 @@ function teardownCoopSocket(){
 }
 function disconnectCoop(reason='Disconnected'){
   clearTimeout(coopStartTimer);
-  coopStarted=false;coopServerPhase='lobby';coopServerStats=null;coopLastServerSeq=0;coopLastServerAt=0;coopPrevSnapAt=0;coopSnapDt=0.025;
+  coopStarted=false;coopServerPhase='lobby';coopLastServerSeq=0;coopLastServerAt=0;coopPrevSnapAt=0;coopSnapDt=0.025;
   coopServerX=NaN;coopServerY=NaN;coopId=null;coopPeers={};coopUpgradeOffer=null;coopUpgradeChosen=false;
   resetWaveUpgrades();
   const baseMax=combatStats().maxHp;
@@ -1009,18 +1010,15 @@ function coopConnect(){
   const name=($('coopName').value||'Player').slice(0,20)||'Player';coopRoom=room;
   teardownCoopSocket();
   coopSocket=new WebSocket(coopUrl(room));coopSetStatus('Connecting to room '+room+'…');
-  coopSocket.onopen=()=>{coopServerStats=null;coopSocket.send(JSON.stringify({type:'join',name,stats:coopStats(),progression:progressionSnapshot()}));coopSetStatus('🟢 Connected • Room: '+room);$('coopModal').classList.add('hidden');showCoopStart(true);updateCoopLobby();toast('Online co-op connected 🌐')};
+  coopSocket.onopen=()=>{coopSocket.send(JSON.stringify({type:'join',name,stats:coopStats(),progression:progressionSnapshot()}));coopSetStatus('🟢 Connected • Room: '+room);$('coopModal').classList.add('hidden');showCoopStart(true);updateCoopLobby();toast('Online co-op connected 🌐')};
   coopSocket.onclose=()=>disconnectCoop('🔴 Disconnected');
   coopSocket.onerror=()=>coopSetStatus('⚠️ Connection error');
   coopSocket.onmessage=e=>{try{coopHandle(JSON.parse(e.data))}catch(err){console.error(err)}};
 }
 function coopStats(){
-  // Always use local base stats, not server stats when joining
-  const b=arenaState.stats,r=arenaState.waveUpgrades||{};
-  let st={maxHp:b.maxHp+r.hp,atk:b.atk+r.atk,spd:b.spd+r.spd,crit:Math.min(.95,b.crit+r.crit),armor:b.armor+r.armor};
-  if(hasPassive('iron'))st.maxHp*=1.10;if(hasPassive('sharp'))st.atk*=1.12;if(hasPassive('swift'))st.spd*=1.08;if(hasPassive('crit'))st.crit=Math.min(.95,st.crit+.05);if(hasPassive('thorn'))st.armor*=1.15;if(hasPassive('eternal')){st.maxHp*=1.06;st.atk*=1.06;st.spd*=1.06;st.crit=Math.min(.95,st.crit+.02);st.armor*=1.06}
+  const c=combatStats();
   return {
-    atk:st.atk,spd:st.spd,maxHp:st.maxHp,armor:st.armor,crit:st.crit,hp:Math.min(arena.player.hp,st.maxHp),
+    atk:c.atk,spd:c.spd,maxHp:c.maxHp,armor:c.armor,crit:c.crit,hp:Math.min(arena.player.hp,c.maxHp),
     skill:(arenaState.skills[0]?.id||''),
     level:Number(arenaState.level||1),xp:Number(arenaState.xp||0),rebirths:Number(arenaState.rebirths||0),mult:Number(arenaState.mult||1),progressRev:Number(arenaState.lastProgressRev||0),
     passives:Array.isArray(arenaState.passives)?arenaState.passives.slice(0,32):[]
@@ -1210,14 +1208,6 @@ function coopApplyState(m){
     arena.player.hp=m.player.hp;arena.player.maxHp=m.player.maxHp||arena.player.maxHp;
     if((arena.player.slashT||0)<=0&&Number.isFinite(m.player.angle))arena.player.angle=m.player.angle;
     arena.player.weapon=m.player.weapon||arena.player.weapon||'sword';arenaState.activeWeaponType=m.player.weapon||arenaState.activeWeaponType||'sword';arena.player.skill=m.player.skill||arena.player.skill||'';arena.player.skillCd=Number(m.player.skillCd)||0;arena.player.downed=!!m.player.downed;arena.player.reviveProgress=m.player.reviveProgress||0;
-    if(Number.isFinite(m.player.atk)||Number.isFinite(m.player.spd)||Number.isFinite(m.player.armor)||Number.isFinite(m.player.crit)||Number.isFinite(m.player.maxHp)){
-      coopServerStats={};
-      if(Number.isFinite(m.player.atk))coopServerStats.atk=m.player.atk;
-      if(Number.isFinite(m.player.spd))coopServerStats.spd=m.player.spd;
-      if(Number.isFinite(m.player.armor))coopServerStats.armor=m.player.armor;
-      if(Number.isFinite(m.player.crit))coopServerStats.crit=m.player.crit;
-      if(Number.isFinite(m.player.maxHp))coopServerStats.maxHp=m.player.maxHp;
-    }
     if(m.player.progression)applyProgressionSnapshot(m.player.progression,'server');
     arenaStats();
   }
