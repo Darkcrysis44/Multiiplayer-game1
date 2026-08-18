@@ -997,6 +997,8 @@ function disconnectCoop(reason='Disconnected'){
   resetWaveUpgrades();
   const baseMax=combatStats().maxHp;
   if(arena.player)arena.player.hp=Math.min(arena.player.hp||baseMax,baseMax);
+  // Reset player weapon to local state
+  arena.player.weapon=arenaState.activeWeaponType||'sword';
   teardownCoopSocket();
   coopSetStatus(reason);
   showCoopStart(false);
@@ -1013,9 +1015,12 @@ function coopConnect(){
   coopSocket.onmessage=e=>{try{coopHandle(JSON.parse(e.data))}catch(err){console.error(err)}};
 }
 function coopStats(){
-  const c=combatStats();
+  // Always use local base stats, not server stats when joining
+  const b=arenaState.stats,r=arenaState.waveUpgrades||{};
+  let st={maxHp:b.maxHp+r.hp,atk:b.atk+r.atk,spd:b.spd+r.spd,crit:Math.min(.95,b.crit+r.crit),armor:b.armor+r.armor};
+  if(hasPassive('iron'))st.maxHp*=1.10;if(hasPassive('sharp'))st.atk*=1.12;if(hasPassive('swift'))st.spd*=1.08;if(hasPassive('crit'))st.crit=Math.min(.95,st.crit+.05);if(hasPassive('thorn'))st.armor*=1.15;if(hasPassive('eternal')){st.maxHp*=1.06;st.atk*=1.06;st.spd*=1.06;st.crit=Math.min(.95,st.crit+.02);st.armor*=1.06}
   return {
-    atk:c.atk,spd:c.spd,maxHp:c.maxHp,armor:c.armor,crit:c.crit,hp:Math.min(arena.player.hp,c.maxHp),
+    atk:st.atk,spd:st.spd,maxHp:st.maxHp,armor:st.armor,crit:st.crit,hp:Math.min(arena.player.hp,st.maxHp),
     skill:(arenaState.skills[0]?.id||''),
     level:Number(arenaState.level||1),xp:Number(arenaState.xp||0),rebirths:Number(arenaState.rebirths||0),mult:Number(arenaState.mult||1),progressRev:Number(arenaState.lastProgressRev||0),
     passives:Array.isArray(arenaState.passives)?arenaState.passives.slice(0,32):[]
@@ -1205,12 +1210,14 @@ function coopApplyState(m){
     arena.player.hp=m.player.hp;arena.player.maxHp=m.player.maxHp||arena.player.maxHp;
     if((arena.player.slashT||0)<=0&&Number.isFinite(m.player.angle))arena.player.angle=m.player.angle;
     arena.player.weapon=m.player.weapon||arena.player.weapon||'sword';arenaState.activeWeaponType=m.player.weapon||arenaState.activeWeaponType||'sword';arena.player.skill=m.player.skill||arena.player.skill||'';arena.player.skillCd=Number(m.player.skillCd)||0;arena.player.downed=!!m.player.downed;arena.player.reviveProgress=m.player.reviveProgress||0;
-    if(Number.isFinite(m.player.atk))coopServerStats=coopServerStats||{};
-    if(Number.isFinite(m.player.atk))coopServerStats.atk=m.player.atk;
-    if(Number.isFinite(m.player.spd))coopServerStats.spd=m.player.spd;
-    if(Number.isFinite(m.player.armor))coopServerStats.armor=m.player.armor;
-    if(Number.isFinite(m.player.crit))coopServerStats.crit=m.player.crit;
-    if(Number.isFinite(m.player.maxHp))coopServerStats.maxHp=m.player.maxHp;
+    if(Number.isFinite(m.player.atk)||Number.isFinite(m.player.spd)||Number.isFinite(m.player.armor)||Number.isFinite(m.player.crit)||Number.isFinite(m.player.maxHp)){
+      coopServerStats={};
+      if(Number.isFinite(m.player.atk))coopServerStats.atk=m.player.atk;
+      if(Number.isFinite(m.player.spd))coopServerStats.spd=m.player.spd;
+      if(Number.isFinite(m.player.armor))coopServerStats.armor=m.player.armor;
+      if(Number.isFinite(m.player.crit))coopServerStats.crit=m.player.crit;
+      if(Number.isFinite(m.player.maxHp))coopServerStats.maxHp=m.player.maxHp;
+    }
     if(m.player.progression)applyProgressionSnapshot(m.player.progression,'server');
     arenaStats();
   }
