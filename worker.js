@@ -1,5 +1,5 @@
 const MAX_PLAYERS = 4;
-const TICK_MS = 33;       // ~30 Hz authoritative simulation (smoother co-op)
+const TICK_MS = 16;       // ~60 Hz authoritative simulation (smoother co-op)
 const STATE_MS = 33;      // ~30 Hz snapshots; client prediction covers the rest
 const WIDTH = 1200, HEIGHT = 700;
 const TYPES = {

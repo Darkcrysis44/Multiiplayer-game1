@@ -1260,25 +1260,25 @@ function coopClientVisualTick(dt){
     }
   }
   for(const peer of Object.values(coopPeers)){
-    const k=Math.min(1,dt*28);peer.x+=(peer.targetX-peer.x)*k;peer.y+=(peer.targetY-peer.y)*k;
+    const k=Math.min(1,dt*45);peer.x+=(peer.targetX-peer.x)*k;peer.y+=(peer.targetY-peer.y)*k;
     const ta=Number.isFinite(peer.targetAngle)?peer.targetAngle:(peer.angle||0);
     let da=Math.atan2(Math.sin(ta-(peer.angle||0)),Math.cos(ta-(peer.angle||0)));
-    peer.angle=(peer.angle||0)+da*Math.min(1,dt*30);
+    peer.angle=(peer.angle||0)+da*Math.min(1,dt*50);
     peer.slashT=Math.max(0,(peer.slashT||0)-dt);
   }
   for(const e of arena.enemies){
     if(!Number.isFinite(e.targetX))continue;
     let tx=e.targetX,ty=e.targetY;
-    if(e.predVx&&e.predVy){tx+=e.predVx*dt*0.45;ty+=e.predVy*dt*0.45;}
-    const k=Math.min(1,dt*34);
+    if(e.predVx&&e.predVy){tx+=e.predVx*dt*0.7;ty+=e.predVy*dt*0.7;}
+    const k=Math.min(1,dt*50);
     e.x+=(tx-e.x)*k;e.y+=(ty-e.y)*k;
     e.hit=Math.max(0,(e.hit||0)-dt);e.attack=Math.max(0,(e.attack||0)-dt);
   }
   if(Number.isFinite(coopServerX)&&Number.isFinite(coopServerY)){
     const ex=coopServerX-p.x,ey=coopServerY-p.y,error=Math.hypot(ex,ey);
-    if(error>120){p.x=coopServerX;p.y=coopServerY;}
-    else if(error>2){
-      const blend=Math.min(1,dt*(error>40?9:5));
+    if(error>200){p.x=coopServerX;p.y=coopServerY;}
+    else if(error>3){
+      const blend=Math.min(1,dt*(error>50?15:10));
       p.x+=ex*blend;p.y+=ey*blend;
       p.x=Math.max(30,Math.min(arena.w-30,p.x));p.y=Math.max(62,Math.min(arena.h-30,p.y));
     }
@@ -1287,10 +1287,10 @@ function coopClientVisualTick(dt){
   for(const q of arena.projectiles){
     if(q.owner==='coopArrow'||q.owner==='remoteArrow'){
       if(Number.isFinite(q.vx)&&Number.isFinite(q.vy)&&!q.hit){
-        q.x+=q.vx*60*dt*0.55;q.y+=q.vy*60*dt*0.55;
+        q.x+=q.vx*60*dt*0.75;q.y+=q.vy*60*dt*0.75;
       }
       if(Number.isFinite(q.targetX)){
-        const k=Math.min(1,dt*30);
+        const k=Math.min(1,dt*40);
         q.x+=(q.targetX-q.x)*k;q.y+=(q.targetY-q.y)*k;
       }
       if(Number.isFinite(q.vx)&&Number.isFinite(q.vy))q.angle=Math.atan2(q.vy,q.vx);
