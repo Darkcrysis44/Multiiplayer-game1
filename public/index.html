@@ -769,7 +769,35 @@ const arenaState={
 let arena={running:false,wave:1,enemies:[],projectiles:[],particles:[],slashes:[],keys:{},last:0,spawned:0,kills:0,shake:0,mouseX:0,mouseY:0,player:{x:0,y:0,hp:100,dir:1,angle:0,attackCd:0,slashT:0,inv:0,skillCd:0}};
 let arenaAudio=null;
 let coopServerStats=null;
-function saveArena(){localStorage.setItem('nicoletaLoveArena',JSON.stringify(arenaState))}
+function saveArena(){
+  arenaState.profileVersion=3;
+  arenaState.lastSavedAt=Date.now();
+  localStorage.setItem('nicoletaLoveArena',JSON.stringify(arenaState));
+}
+function progressionSnapshot(){return {level:Number(arenaState.level||1),xp:Number(arenaState.xp||0),rebirths:Number(arenaState.rebirths||0),mult:Number(arenaState.mult||1),stats:{maxHp:Number(arenaState.stats.maxHp||100),atk:Number(arenaState.stats.atk||14),spd:Number(arenaState.stats.spd||3.2),armor:Number(arenaState.stats.armor||0),crit:Number(arenaState.stats.crit||.08)}}}
+function applyProgressionSnapshot(pr,source='sync'){
+  if(!pr)return;
+  const nextLevel=Math.max(1,Number(pr.level)||1), nextXp=Math.max(0,Number(pr.xp)||0);
+  const oldLevel=Math.max(1,Number(arenaState.level)||1);
+  if(nextLevel>oldLevel){
+    for(let lv=oldLevel+1;lv<=nextLevel;lv++){const scale=Number(arenaState.mult||1);arenaState.stats.maxHp+=Math.round(12*scale);arenaState.stats.atk+=Math.round(2.5*scale*10)/10;arenaState.stats.spd+=.05*scale;arenaState.stats.armor+=.35*scale;}
+    arena.player.hp=arenaState.stats.maxHp;
+    if(nextLevel>oldLevel){sfx('level');toast('LEVEL UP! ✨ Lv '+nextLevel);arenaLog('Level '+nextLevel+' synced from '+source+'.');}
+  }
+  arenaState.level=nextLevel;arenaState.xp=nextXp;arenaState.lastProgressRev=Math.max(Number(arenaState.lastProgressRev)||0,Number(pr.progressRev)||0);
+  if(Number.isFinite(Number(pr.rebirths)))arenaState.rebirths=Math.max(0,Number(pr.rebirths));
+  if(Number.isFinite(Number(pr.mult)))arenaState.mult=Math.max(1,Number(pr.mult));
+  if(pr.stats&&source==='server'){
+    // Server combat values include the persistent level gains; only merge level-derived deltas here.
+    arenaState.stats.maxHp=Math.max(arenaState.stats.maxHp,Number(pr.stats.maxHp)||arenaState.stats.maxHp);
+    arenaState.stats.atk=Math.max(arenaState.stats.atk,Number(pr.stats.atk)||arenaState.stats.atk);
+    arenaState.stats.spd=Math.max(arenaState.stats.spd,Number(pr.stats.spd)||arenaState.stats.spd);
+    arenaState.stats.armor=Math.max(arenaState.stats.armor,Number(pr.stats.armor)||arenaState.stats.armor);
+    arenaState.stats.crit=Math.max(arenaState.stats.crit,Number(pr.stats.crit)||arenaState.stats.crit);
+  }
+  saveArena();arenaStats();
+}
+function sendProgressionSync(){if(coopSocket&&coopSocket.readyState===1&&coopStarted)coopSend({type:'progressSync',progression:progressionSnapshot()});}
 function initArenaAudio(){if(arenaAudio)return;try{arenaAudio=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}
 function sfx(type){initArenaAudio();if(!arenaAudio)return;const ctx=arenaAudio;if(ctx.state==='suspended')ctx.resume();const o=ctx.createOscillator(),g=ctx.createGain();o.connect(g);g.connect(ctx.destination);const now=ctx.currentTime;let f=type==='bow'?720:type==='slash'?520:type==='hit'?180:type==='kill'?120:type==='hurt'?85:type==='level'?760:type==='rebirth'?980:320;let dur=type==='slash'?.11:type==='level'?.28:type==='rebirth'?.5:.12;o.frequency.setValueAtTime(f,now);o.frequency.exponentialRampToValueAtTime(Math.max(55,f*.55),now+dur);o.type=type==='slash'?'triangle':'sine';g.gain.setValueAtTime(.0001,now);g.gain.exponentialRampToValueAtTime(type==='rebirth'?.16:.09,now+.015);g.gain.exponentialRampToValueAtTime(.0001,now+dur);o.start(now);o.stop(now+dur+.02)}
 function resizeArena(){const r=arenaCanvas.getBoundingClientRect(),d=Math.min(devicePixelRatio||1,2);arenaCanvas.width=Math.floor(r.width*d);arenaCanvas.height=Math.floor(r.height*d);ac.setTransform(d,0,0,d,0,0);arena.w=r.width;arena.h=r.height;arena.player.x=Math.max(50,Math.min(arena.w-50,arena.player.x||arena.w/2));arena.player.y=Math.max(70,Math.min(arena.h-50,arena.player.y||arena.h/2))}
@@ -784,7 +812,13 @@ function resetWaveUpgrades(){arenaState.waveUpgrades={hp:0,atk:0,spd:0,crit:0,ar
 function arenaStats(){const s=combatStats();$('lsaHpText').textContent=Math.max(0,Math.ceil(arena.player.hp))+' / '+Math.ceil(s.maxHp);$('lsaHpBar').style.width=Math.max(0,arena.player.hp/s.maxHp*100)+'%';$('lsaAtk').textContent=s.atk.toFixed(1);$('lsaSpd').textContent=s.spd.toFixed(1);$('lsaCrit').textContent=Math.round(s.crit*100)+'%';$('lsaArmor').textContent=s.armor.toFixed(1);$('lsaGold').textContent=loveBalance;$('lsaWave').textContent=arena.wave;$('lsaLevel').textContent=arenaState.level;$('lsaRebirth').textContent=arenaState.rebirths;$('lsaXpText').textContent=arenaState.xp+' / '+xpNeed();$('lsaXpBar').style.width=Math.min(100,arenaState.xp/xpNeed()*100)+'%';$('lsaMult').textContent='×'+arenaState.mult.toFixed(2);$('lsaWeapon').textContent=(arenaState.activeWeapon||'Rose Blade')+' ['+(arenaState.activeWeaponType==='bow'?'2':'1')+']';$('lsaArmorName').textContent=arenaState.gear.armor;$('lsaAcc').textContent=arenaState.gear.acc;$('lsaRebirthBtn').disabled=arenaState.level<50;const sk=arenaState.skills[0];$('lsaSkillName').textContent=sk?sk.name:'None';$('lsaSkillCd').textContent=sk?(arena.player.skillCd>0?arena.player.skillCd.toFixed(1)+'s':'Ready'):'Buy in Shop';$('lsaSkillUse').disabled=!sk||arena.player.skillCd>0||!arena.running}
 function arenaLog(t){const l=$('lsaLog');l.innerHTML='<div>• '+t+'</div>'+l.innerHTML}
 function toast(t){const el=$('lsaToast');el.textContent=t;el.classList.add('show');clearTimeout(el._tm);el._tm=setTimeout(()=>el.classList.remove('show'),1700)}
-function gainXp(amount){arenaState.xp+=amount;let leveled=false;while(arenaState.xp>=xpNeed()){arenaState.xp-=xpNeed();arenaState.level++;leveled=true;const scale=arenaState.mult;arenaState.stats.maxHp+=Math.round(12*scale);arenaState.stats.atk+=Math.round(2.5*scale*10)/10;arenaState.stats.spd+=.05*scale;arenaState.stats.armor+=.35*scale;arena.player.hp=arenaState.stats.maxHp;arenaLog('Level '+arenaState.level+'! Stats increased.');sfx('level');toast('LEVEL UP! ✨ Lv '+arenaState.level)}saveArena();if(coopSocket&&coopSocket.readyState===1){coopSend({type:'profileSync',stats:coopStats()});}arenaStats()}
+function gainXp(amount){
+  const add=Math.max(0,Number(amount)||0); if(!add)return;
+  arenaState.xp=Math.max(0,Number(arenaState.xp)||0)+add;
+  let leveled=false;
+  while(arenaState.xp>=xpNeed()){arenaState.xp-=xpNeed();arenaState.level++;leveled=true;const scale=arenaState.mult;arenaState.stats.maxHp+=Math.round(12*scale);arenaState.stats.atk+=Math.round(2.5*scale*10)/10;arenaState.stats.spd+=.05*scale;arenaState.stats.armor+=.35*scale;arena.player.hp=arenaState.stats.maxHp;arenaLog('Level '+arenaState.level+'! Stats increased.');sfx('level');toast('LEVEL UP! ✨ Lv '+arenaState.level)}
+  arenaState.lastProgressRev=(Number(arenaState.lastProgressRev)||0)+1;saveArena();if(leveled||add>0)sendProgressionSync();arenaStats();
+}
 function addArenaMoney(amount){addLove(amount);arenaStats();toast('+'+amount+' 💗')} 
 const bossDefs=[
  {name:'Heartbreaker',icon:'💔',hp:7,spd:.70,atk:3.4,skill:'dash'},
@@ -957,7 +991,7 @@ function coopConnect(){
   const name=($('coopName').value||'Player').slice(0,20)||'Player';coopRoom=room;
   try{if(coopSocket)coopSocket.close()}catch(e){}
   coopSocket=new WebSocket(coopUrl(room));coopSetStatus('Connecting to room '+room+'…');
-  coopSocket.onopen=()=>{coopServerStats=combatStats();coopSocket.send(JSON.stringify({type:'join',name,stats:coopStats()}));coopSetStatus('🟢 Connected • Room: '+room);$('coopModal').classList.add('hidden');showCoopStart(true);updateCoopLobby();toast('Online co-op connected 🌐')};
+  coopSocket.onopen=()=>{coopServerStats=combatStats();coopSocket.send(JSON.stringify({type:'join',name,stats:coopStats(),progression:progressionSnapshot()}));coopSetStatus('🟢 Connected • Room: '+room);$('coopModal').classList.add('hidden');showCoopStart(true);updateCoopLobby();toast('Online co-op connected 🌐')};
   coopSocket.onclose=()=>{coopSetStatus('🔴 Disconnected');coopSocket=null;coopServerStats=null;coopStarted=false;showCoopStart(false)};
   coopSocket.onerror=()=>coopSetStatus('⚠️ Connection error');
   coopSocket.onmessage=e=>{try{coopHandle(JSON.parse(e.data))}catch(err){console.error(err)}};
@@ -967,7 +1001,7 @@ function coopStats(){
   return {
     atk:c.atk,spd:c.spd,maxHp:c.maxHp,armor:c.armor,crit:c.crit,hp:Math.min(arena.player.hp,c.maxHp),
     skill:(arenaState.skills[0]?.id||''),
-    level:Number(arenaState.level||1),xp:Number(arenaState.xp||0),rebirths:Number(arenaState.rebirths||0),mult:Number(arenaState.mult||1),
+    level:Number(arenaState.level||1),xp:Number(arenaState.xp||0),rebirths:Number(arenaState.rebirths||0),mult:Number(arenaState.mult||1),progressRev:Number(arenaState.lastProgressRev||0),
     passives:Array.isArray(arenaState.passives)?arenaState.passives.slice(0,32):[]
   };
 }
@@ -1044,20 +1078,8 @@ function coopHandle(m){
   }
   if(m.type==='downed'){if(m.playerId===coopId){arena.player.downed=true;arena.player.reviveProgress=0;coopSetStatus('💚 DOWNED — another player can revive you');}burst(m.x,m.y,24,'death');sfx('hurt');return}
   if(m.type==='revive'){if(m.playerId===coopId){arena.player.downed=false;arena.player.reviveProgress=0;coopSetStatus('💚 Revived!');}burst(m.x,m.y,34,'level');sfx('level');return}
-  if(m.type==='profileSync'){
-    if(Number.isFinite(m.level))arenaState.level=Number(m.level);
-    if(Number.isFinite(m.xp))arenaState.xp=Number(m.xp);
-    if(Number.isFinite(m.rebirths))arenaState.rebirths=Number(m.rebirths);
-    if(Number.isFinite(m.mult))arenaState.mult=Number(m.mult);
-    if(Number.isFinite(m.atk))arenaState.stats.atk=Number(m.atk);
-    if(Number.isFinite(m.spd))arenaState.stats.spd=Number(m.spd);
-    if(Number.isFinite(m.maxHp))arenaState.stats.maxHp=Number(m.maxHp);
-    if(Number.isFinite(m.armor))arenaState.stats.armor=Number(m.armor);
-    if(Number.isFinite(m.crit))arenaState.stats.crit=Number(m.crit);
-    if(Array.isArray(m.passives))arenaState.passives=m.passives;
-    saveArena();arena.player.hp=Math.min(arena.player.hp,combatStats().maxHp);arenaStats();return;
-  }
-  if(m.type==='reward'){if(m.reward)addArenaMoney(Number(m.reward)||0);return;}
+  if(m.type==='progression'){applyProgressionSnapshot(m.progression,'server');return;}
+  if(m.type==='reward'){if(m.reward)addArenaMoney(Number(m.reward)||0);if(m.progression)applyProgressionSnapshot(m.progression,'server');else if(m.xp)gainXp(Number(m.xp)||0);return;}
   if(m.type==='skillFx'){
     const p=coopPeers[m.from];
     const a=Number.isFinite(m.angle)?m.angle:0;
@@ -1140,16 +1162,13 @@ function coopApplyState(m){
     if(!Number.isFinite(arena.player.targetX))arena.player.targetX=m.player.x;
     if(!Number.isFinite(arena.player.targetY))arena.player.targetY=m.player.y;
     arena.player.hp=m.player.hp;arena.player.maxHp=m.player.maxHp||arena.player.maxHp;arena.player.angle=m.player.angle||arena.player.angle;arena.player.weapon=m.player.weapon||arena.player.weapon||'sword';arena.player.skill=m.player.skill||arena.player.skill||'';arena.player.skillCd=Number(m.player.skillCd)||0;arena.player.downed=!!m.player.downed;arena.player.reviveProgress=m.player.reviveProgress||0;
-    if(Number.isFinite(m.player.level))arenaState.level=m.player.level;
-    if(Number.isFinite(m.player.xp))arenaState.xp=m.player.xp;
-    if(Number.isFinite(m.player.rebirths))arenaState.rebirths=m.player.rebirths;
-    if(Number.isFinite(m.player.mult))arenaState.mult=m.player.mult;
     if(Number.isFinite(m.player.atk))coopServerStats=coopServerStats||{};
     if(Number.isFinite(m.player.atk))coopServerStats.atk=m.player.atk;
     if(Number.isFinite(m.player.spd))coopServerStats.spd=m.player.spd;
     if(Number.isFinite(m.player.armor))coopServerStats.armor=m.player.armor;
     if(Number.isFinite(m.player.crit))coopServerStats.crit=m.player.crit;
     if(Number.isFinite(m.player.maxHp))coopServerStats.maxHp=m.player.maxHp;
+    if(m.player.progression)applyProgressionSnapshot(m.player.progression,'server');
     arenaStats();
   }
   if(Array.isArray(m.players)){
@@ -1237,7 +1256,7 @@ function coopTick(){if(!coopSocket||coopSocket.readyState!==1)return;const p=are
 function showCoopStart(show){const el=$('coopStartOverlay');if(el)el.classList.toggle('hidden',!show);if(show)updateCoopLobby()}
 function updateCoopLobby(){const total=Object.keys(coopPeers).length+(coopId?1:0),st=$('coopStartStatus'),btn=$('coopStartBattle'),txt=$('coopStartText');if(st)st.textContent=coopServerPhase==='battle'?'⚔️ Battle running • '+total+' players':coopServerPhase==='upgrade'?'✨ Everyone is choosing an upgrade':'🟢 Server room • '+total+' player'+(total===1?'':'s');if(btn){btn.disabled=!coopSocket||coopSocket.readyState!==1||!(coopServerPhase==='lobby'||coopServerPhase==='gameover');btn.textContent=coopServerPhase==='gameover'?'↻ RESTART RUN':(coopServerPhase==='lobby'?'▶ START BATTLE':'⚔️ BATTLE RUNNING')}if(txt)txt.textContent='Cloudflare server controls the battle clock, enemies, waves and upgrades. No player is the host.'}
 function resetArenaRun(){arena.running=false;arena.wave=1;arena.spawned=0;arena.enemies=[];arena.projectiles=[];arena.particles=[];arena.slashes=[];resetWaveUpgrades();arena.player={x:0,y:0,targetX:0,targetY:0,hp:combatStats().maxHp,dir:1,angle:0,attackAngle:0,attackCd:0,slashT:0,inv:0,skillCd:0};resizeArena();arenaStats()}
-function beginCoopBattle(announce=true){if(arenaModal.classList.contains('hidden'))arenaModal.classList.remove('hidden');$('coopModal').classList.add('hidden');showCoopStart(false);arena.running=true;initArenaAudio();arenaStats();arenaLog('⚔️ Cloudflare server is running the battle.');if(announce)coopSend({type:'startRequest',stats:coopStats()})}
+function beginCoopBattle(announce=true){if(arenaModal.classList.contains('hidden'))arenaModal.classList.remove('hidden');$('coopModal').classList.add('hidden');showCoopStart(false);arena.running=true;initArenaAudio();arenaStats();arenaLog('⚔️ Cloudflare server is running the battle.');if(announce){sendProgressionSync();coopSend({type:'startRequest',stats:coopStats()})}}
 function coopStart(){coopStarted=false;coopServerPhase='lobby';coopServerStats=null;coopLastServerSeq=0;coopLastServerAt=0;coopServerX=0;coopServerY=0;clearTimeout(coopStartTimer);resetArenaRun();showCoopStart(true);updateCoopLobby();coopConnect()}
 $('lsaCoopBtn').onclick=()=>{coopOpenedFromRunning=!!arena.running;arena.running=false;$('coopModal').classList.remove('hidden');showCoopStart(false);coopSetStatus('Offline');updateCoopLobby()};
 $('coopClose').onclick=()=>{$('coopModal').classList.add('hidden');arena.running=false;showCoopStart(false);coopOpenedFromRunning=false};
