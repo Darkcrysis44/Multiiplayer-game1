@@ -1,8 +1,9 @@
-# Love Sword Arena — Server Authoritative
+# Love Sword Arena - Cloudflare Worker
 
-- `public/index.html` — game client
-- `public/music.mp3` — game music asset
-- `worker.js` — multiplayer server / Durable Object
-- `wrangler.toml` — Cloudflare Worker configuration
+Structure:
+- `public/index.html`
+- `public/music.mp3`
+- `worker.js`
+- `wrangler.toml`
 
-Deploy the Worker with Wrangler. The client assets are kept in `public/` as requested.
+Deploy with Wrangler from this folder. The Worker serves the files from `public/` and `/ws` is handled by the Durable Object.
