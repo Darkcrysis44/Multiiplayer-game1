@@ -911,10 +911,7 @@ function drawEnemy(e){
 // ===== SERVER-AUTHORITATIVE MULTIPLAYER =====
 const multi={
   socket:null,connected:false,room:'love-sword-arena',id:null,players:{},projectiles:{},
-  lastSend:0,inputSeq:0,attackSeq:0,serverOffset:0,reconnectTimer:null,
-  // Snapshot the solo progression once when a multiplayer session starts.
-  // Multiplayer must never mutate or rebuild persistent solo stats on reconnect.
-  localStats:null,session:0
+  lastSend:0,inputSeq:0,attackSeq:0,serverOffset:0,reconnectTimer:null,session:0
 };
 function multiStatus(t){const el=$('multiStatus');if(el)el.textContent='Multiplayer: '+t}
 function multiWsUrl(){
@@ -926,20 +923,22 @@ function connectMultiplayer(){
   if(multi.connected||multi.socket?.readyState===WebSocket.CONNECTING)return;
   multiStatus('connecting…');
   try{multi.socket=new WebSocket(multiWsUrl())}catch(e){multiStatus('connection failed');return}
-  multi.socket.onopen=()=>{
+  const socket=multi.socket, session=multi.session;
+  socket.onopen=()=>{
+    if(socket!==multi.socket||session!==multi.session)return;
     multi.connected=true;multiStatus('connected • room '+multi.room);
   };
-  const sessionAtConnect=multi.session;
-  multi.socket.onclose=()=>{
+  socket.onclose=()=>{
+    if(socket!==multi.socket||session!==multi.session)return;
     multi.connected=false;multiStatus('offline');
     clearTimeout(multi.reconnectTimer);
-    if(arena.running&&arena.mode==='multiplayer'&&sessionAtConnect===multi.session)
+    multi.reconnectTimer=null;
+    if(arena.running&&arena.mode==='multiplayer')
       multi.reconnectTimer=setTimeout(connectMultiplayer,1200);
   };
-  multi.socket.onerror=()=>multiStatus('connection error');
-  const socketForSession=multi.socket;
-  multi.socket.onmessage=e=>{
-    if(socketForSession!==multi.socket||!arena.running||arena.mode!=='multiplayer')return;
+  socket.onerror=()=>{if(socket===multi.socket)multiStatus('connection error')};
+  socket.onmessage=e=>{
+    if(socket!==multi.socket||session!==multi.session||!arena.running||arena.mode!=='multiplayer')return;
     if(typeof e.data!=='string'||e.data.length>1024*1024)return;
     let m;try{m=JSON.parse(e.data)}catch{return}
     handleMultiMessage(m)
@@ -1034,7 +1033,7 @@ function multiAttack(angle){
   sendMulti({type:'playerAttack',seq,weapon,angle});
 }
 function updateMulti(dt){
-  if(!multi.connected||!arena.running||arena.mode!=='multiplayer')return;
+  if(!multi.connected)return;
   const p=arena.player;
   p.attackCd=Math.max(0,p.attackCd-dt);
   p.slashT=Math.max(0,p.slashT-dt);
@@ -1046,7 +1045,7 @@ function updateMulti(dt){
   if(arena.keys.a||arena.keys.ArrowLeft)dx--;
   if(arena.keys.d||arena.keys.ArrowRight)dx++;
   if(dx||dy){
-    const l=Math.hypot(dx,dy),sp=(multi.localStats?.spd ?? arenaBase.spd);
+    const l=Math.hypot(dx,dy),sp=combatStats().spd;
     p.x+=dx/l*sp*60*dt;p.y+=dy/l*sp*60*dt;
   }
   p.x=Math.max(30,Math.min(arena.w-30,p.x));
@@ -1095,18 +1094,20 @@ function arenaLoop(t){const dt=Math.min(.033,(t-arena.last)/1000||0);arena.last=
 
 function startMultiplayer(){
   initArenaAudio();
-  // A new multiplayer session gets exactly one immutable snapshot of the
-  // current solo stats. Re-entering multiplayer cannot apply level bonuses again.
+  // Start a completely new client session without changing the existing
+  // multiplayer gameplay or the persistent solo stats.
   multi.session++;
-  multi.localStats=Object.freeze({...combatStats()});
+  clearTimeout(multi.reconnectTimer);
+  multi.reconnectTimer=null;
+  try{multi.socket?.close(1000,'new arena session')}catch{}
+  multi.socket=null;
+  multi.connected=false;
   multi.id=null;
   multi.players={};
   multi.projectiles={};
   multi.inputSeq=0;
   multi.attackSeq=0;
   multi.lastSend=0;
-  clearTimeout(multi.reconnectTimer);
-  multi.reconnectTimer=null;
 
   arena.mode='multiplayer';
   arenaModal.classList.remove('hidden');
@@ -1116,11 +1117,7 @@ function startMultiplayer(){
   arena.projectiles=[];
   arena.particles=[];
   arena.slashes=[];
-  arena.player={
-    x:arena.w/2||400,y:arena.h/2||300,
-    hp:multi.localStats.maxHp,
-    dir:1,angle:0,attackCd:0,slashT:0,inv:0,skillCd:0
-  };
+  arena.player={x:arena.w/2||400,y:arena.h/2||300,hp:combatStats().maxHp,dir:1,angle:0,attackCd:0,slashT:0,inv:0,skillCd:0};
   resizeArena();
   arenaStats();
   arenaLog('Connected arena — server decides hits and HP.');
@@ -1134,24 +1131,26 @@ function endArena(){
   arenaModal.classList.add('hidden');
 
   if(wasMultiplayer){
-    // Fully terminate the old multiplayer session. Do not leave a reconnect
-    // timer/socket alive while the player is back in the menu or solo mode.
+    // Stop the old socket and its reconnect loop. This is the important
+    // re-entry fix: the next multiplayer entry gets exactly one connection
+    // and therefore one server player instead of a stale/reconnected player.
+    multi.session++;
     clearTimeout(multi.reconnectTimer);
     multi.reconnectTimer=null;
-    multi.session++;
-    try{multi.socket?.close(1000,'arena closed')}catch{}
+    const socket=multi.socket;
     multi.socket=null;
     multi.connected=false;
     multi.id=null;
     multi.players={};
     multi.projectiles={};
-    multi.localStats=null;
     multi.inputSeq=0;
     multi.attackSeq=0;
+    multi.lastSend=0;
+    try{socket?.close(1000,'arena closed')}catch{}
   }
 
-  // Only persistent solo progression is saved here. Multiplayer never writes
-  // level/stat changes into arenaState.
+  // Keep the original save behavior; multiplayer itself does not alter
+  // arenaState stats or level.
   saveArena();
 }
 function showUpgrade(){const grid=$('lsaUpgradeGrid');grid.innerHTML='';const m=arenaState.mult;const choices=[['❤️','Vitality','Max HP +'+Math.round(25*m),()=>arenaState.waveUpgrades.hp+=Math.round(25*m)],['⚔️','Sharpness','Attack +'+(4*m).toFixed(1),()=>arenaState.waveUpgrades.atk+=4*m],['💨','Grace','Speed +'+(.35*m).toFixed(2),()=>arenaState.waveUpgrades.spd+=.35*m],['✨','True Love','Crit +5%',()=>arenaState.waveUpgrades.crit+=.05],['🛡️','Protection','Armor +'+(3*m).toFixed(1),()=>arenaState.waveUpgrades.armor+=3*m],['💗','Second Heart','Heal 35% HP',()=>arena.player.hp=Math.min(combatStats().maxHp,arena.player.hp+combatStats().maxHp*.35)]];choices.sort(()=>Math.random()-.5).slice(0,3).forEach(c=>{const d=document.createElement('div');d.className='lsa-item';d.innerHTML='<div class="ico">'+c[0]+'</div><b>'+c[1]+'</b><span>'+c[2]+'</span><button>Choose</button>';d.querySelector('button').onclick=()=>{c[3]();arena.wave++;arena.spawned=0;arena.running=true;if(arena.wave%5===0){arenaLog('⚠️ BOSS WAVE '+arena.wave+' — a Broken Heart Lord has appeared!');toast('BOSS WAVE! 👑💔')} $('lsaUpgrade').classList.add('hidden');arenaStats();arenaLog('Upgrade selected: '+c[1]);saveArena()};grid.appendChild(d)});$('lsaUpgrade').classList.remove('hidden')}
