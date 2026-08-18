@@ -1233,11 +1233,11 @@ function coopApplyState(m){
         const enemyProjectile=a.owner==='enemy';
         q={id:a.id,x:a.x,y:a.y,targetX:a.x,targetY:a.y,vx:a.vx,vy:a.vy,angle:a.angle,life:a.life,
           owner:enemyProjectile?'enemy':(a.owner===coopId?'coopArrow':'remoteArrow'),
-          kind:enemyProjectile?(a.kind==='magic'?'magic':'enemyArrow'):(a.skill?'playerSkillArrow':'playerArrow')};
+          kind:enemyProjectile?(a.kind==='fire'?'fire':a.kind==='magic'?'magic':'enemyArrow'):(a.skill?'playerSkillArrow':'playerArrow')};
         arena.projectiles.push(q);
       }
       if(!q.hit){q.targetX=a.x;q.targetY=a.y;q.vx=a.vx;q.vy=a.vy;q.angle=a.angle;q.life=a.life;
-        if(a.owner==='enemy'){q.owner='enemy';q.kind=a.kind==='magic'?'magic':'enemyArrow';}
+        if(a.owner==='enemy'){q.owner='enemy';q.kind=a.kind==='fire'?'fire':a.kind==='magic'?'magic':'enemyArrow';}
       }
     }
     arena.projectiles=arena.projectiles.filter(q=>!q.id || incoming.has(q.id));

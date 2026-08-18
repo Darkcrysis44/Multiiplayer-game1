@@ -10,7 +10,7 @@ const TYPES = {
   sentinel:[.02,1.65,.46,25,'Rose Sentinel','Rare'], guard:[.02,1.15,.62,24,'Cupid Guard','Uncommon'],
   mimic:[.02,1.4,.7,24,'Heart Mimic','Rare'], assassin:[.01,.72,1.65,18,'Love Assassin','Epic'],
   brute:[.01,2.7,.38,31,'Heart Brute','Epic'], berserker:[.01,1.35,1.3,24,'Love Berserker','Epic'],
-  lovebreaker:[.01,2,.95,27,'Love Breaker','Epic'], witch:[.005,1.05,.5,22,'Heart Witch','Legendary']
+  lovebreaker:[.01,2,.95,27,'Love Breaker','Epic'], witch:[.005,1.05,.5,22,'Heart Witch','Legendary'], witchling:[0, .22, .28, 16, 'Witchling','Common']
 };
 const BOSS_DEFS = [
   {name:'Heartbreaker',icon:'💔',hp:7,spd:.70,atk:3.4,skill:'dash'},
@@ -123,18 +123,29 @@ export class Room {
     p.passives=Array.isArray(s.passives)?s.passives.slice(0,32).map(String):[];
   }
   applyUpgrade(p,c){if(c==='hp'){p.maxHp+=25;p.hp+=25}else if(c==='atk')p.atk+=4;else if(c==='spd')p.spd+=.35;else if(c==='crit')p.crit=clamp(p.crit+.05,0,1);else if(c==='armor')p.armor+=3;else if(c==='heal')p.hp=Math.min(p.maxHp,p.hp+p.maxHp*.35)}
-  spawn(){
-    const side=Math.floor(Math.random()*4);let x,y;if(side===0){x=Math.random()*WIDTH;y=-40}else if(side===1){x=WIDTH+40;y=Math.random()*HEIGHT}else if(side===2){x=Math.random()*WIDTH;y=HEIGHT+40}else{x=-40;y=Math.random()*HEIGHT}
-    let roll=Math.random(),type='broken';if(this.wave%5===0&&this.spawned===0)type='boss';else{let acc=0;for(const[k,v]of Object.entries(TYPES)){acc+=v[0];if(roll<acc){type=k;break}}}
+  spawn(typeOverride=null, sourceX=null, sourceY=null){
+    let x,y;
+    if(Number.isFinite(sourceX)&&Number.isFinite(sourceY)){x=sourceX;y=sourceY;}
+    else {const side=Math.floor(Math.random()*4);if(side===0){x=Math.random()*WIDTH;y=-40}else if(side===1){x=WIDTH+40;y=Math.random()*HEIGHT}else if(side===2){x=Math.random()*WIDTH;y=HEIGHT+40}else{x=-40;y=Math.random()*HEIGHT}}
+    let roll=Math.random(),type=typeOverride;
+    if(!type){if(this.wave%5===0&&this.spawned===0)type='boss';else{let acc=0;for(const[k,v]of Object.entries(TYPES)){acc+=v[0];if(roll<acc){type=k;break}}}}
     let mult=1+this.wave*.15,hp=(34+this.wave*15)*mult,spd=.55+this.wave*.045+Math.random()*.35,atk=7+this.wave*1.7,r=21;
     if(type==='boss'){
-      const bossDef=BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length];
-      hp*=bossDef.hp;spd*=bossDef.spd;atk*=bossDef.atk;r=44;
-    }else{const t=TYPES[type]||TYPES.broken;hp*=t[1];spd*=t[2];r=t[3];if(type==='charger')atk*=1.15;if(type==='tank')atk*=1.35;if(type==='duelist')atk*=1.65;if(type==='assassin')atk*=2;if(type==='brute')atk*=1.7;if(type==='lovebreaker')atk*=3;if(type==='berserker')atk*=2.35;if(type==='lancer')atk*=1.9;if(type==='witch')atk*=1.45}
-    this.enemies.push({id:'e'+this.nextEnemy++,x,y,hp,maxHp:hp,r,speed:spd,atk,hit:0,attack:.7+Math.random(),type,boss:type==='boss',bossIndex:type==='boss'?Math.floor(this.wave/5)-1:-1,bossDef:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length]:null,
-lastShot:0,shootRange:type==='archer'?300:type==='mage'?330:250,keepDistance:type==='archer'||type==='mage',
-specialCd:type==='boss'?1.8+Math.random()*1.2:99,contactDamage:0,inContact:false,
-name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:(TYPES[type]?.[4]||'Broken Heart'),rarity:type==='boss'?'Legendary':(TYPES[type]?.[5]||'Common')});this.spawned++;
+      const bossDef=BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length];hp*=bossDef.hp;spd*=bossDef.spd;atk*=bossDef.atk;r=44;
+    }else{
+      const t=TYPES[type]||TYPES.broken;hp*=t[1];spd*=t[2];r=t[3];
+      if(type==='charger')atk*=1.15;if(type==='tank')atk*=1.35;if(type==='duelist')atk*=1.65;if(type==='assassin')atk*=2;
+      if(type==='brute')atk*=1.7;if(type==='lovebreaker')atk*=3;if(type==='berserker')atk*=2.35;if(type==='lancer')atk*=1.9;if(type==='witch')atk*=1.45;
+    }
+    if(type==='witchling'){hp=28+this.wave*8;spd=.28;atk=4+this.wave*.6;r=16;}
+    const bossIndex=type==='boss'?Math.floor(this.wave/5)-1:-1;
+    const bossDef=type==='boss'?BOSS_DEFS[bossIndex]:null;
+    this.enemies.push({id:'e'+this.nextEnemy++,x,y,hp,maxHp:hp,r,speed:spd,atk,hit:0,attack:.7+Math.random(),type,
+      boss:type==='boss',bossIndex,bossDef,lastShot:0,shootRange:type==='archer'?280:type==='mage'?330:type==='witch'?390:type==='mimic'?130:type==='sentinel'?150:250,
+      keepDistance:['archer','mage','witch'].includes(type),specialCd:type==='boss'?1.8+Math.random()*1.2:type==='witch'?9.5:99,
+      contactDamage:0,inContact:false,shieldT:0,jumpT:0,chargeT:0,shock:false,poison:0,
+      name:type==='boss'?bossDef.name:(TYPES[type]?.[4]||'Broken Heart'),rarity:type==='boss'?'Legendary':(TYPES[type]?.[5]||'Common')});
+    this.spawned++;
   }
   xpNeed(level){return Math.floor(100*Math.pow(1.12,Math.max(0,level-1)))}
   awardXp(p,amount){
@@ -156,6 +167,10 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
     const reward=e.boss?80+this.wave*8:3+Math.floor(this.wave*.9);
     const xp=(e.boss?180:25)+this.wave*6;
     this.enemies=this.enemies.filter(x=>x.id!==e.id);
+    if(e.type==='splitter'&&!e.boss&&this.enemies.length<15){
+      for(let i=0;i<2;i++)this.spawn('broken',e.x+(i?14:-14),e.y);
+      this.spawned=Math.max(0,this.spawned-2);
+    }
     const p=owner?this.players.get(owner):null;
     if(p){
       // Killer gets full reward
@@ -289,157 +304,80 @@ name:type==='boss'?BOSS_DEFS[(Math.floor(this.wave/5)-1)%BOSS_DEFS.length].name:
       a.x=nextX;a.y=nextY;a.life-=dt;
       let first=null,bestT=Infinity;
       const segLenSq=stepX*stepX+stepY*stepY||1;
-      for(const e of this.enemies){
-        const ex=e.x-prevX,ey=e.y-prevY;
-        let t=(ex*stepX+ey*stepY)/segLenSq;
-        t=Math.max(0,Math.min(1,t));
-        const cx=prevX+stepX*t,cy=prevY+stepY*t;
-        const hitRadius=(e.r||20)+(a.radius||8);
-        const dx=e.x-cx,dy=e.y-cy;
-        if(dx*dx+dy*dy<=hitRadius*hitRadius && t<bestT){
-          first=e;bestT=t;
-        }
-      }
-      if(first && a.owner!=='enemy'){
-        a.x=prevX+stepX*bestT;a.y=prevY+stepY*bestT;
-        let dmg=a.damage;if(a.crit)dmg*=2;if(first.shieldT>0)dmg*=.35;
-        first.hp-=dmg;first.hit=.12;a.hit=true;a.hitX=a.x;a.hitY=a.y;a.life=0;
-        this.broadcast({type:'projectileHit',projectileId:a.id,x:a.x,y:a.y,enemyId:first.id,damage:dmg,serverNow:now});
-        if(first.hp<=0)this.killEnemy(first,a.owner);
-      }
-    }
-    for(const a of this.projectiles){
-      if(a.owner!=='enemy'||a.life<=0)continue;
-      for(const p of this.players.values()){
-        if(p.downed)continue;
-        const rr=22+(a.radius||8),dx=p.x-a.x,dy=p.y-a.y;
-        if(dx*dx+dy*dy<=rr*rr){
-          const dmg=Math.max(1,a.damage-p.armor*.35);
-          p.hp=Math.max(0,p.hp-dmg);a.life=0;
-          this.broadcast({type:'enemyProjectileHit',projectileId:a.id,playerId:p.id,x:a.x,y:a.y,damage:dmg,serverNow:now});
-          if(p.hp<=0){p.hp=0;p.downed=true;p.ix=p.iy=0;this.broadcast({type:'downed',playerId:p.id,x:p.x,y:p.y})}
-          break;
-        }
-      }
-    }
-    this.projectiles=this.projectiles.filter(a=>a.life>0&&a.x>-100&&a.x<WIDTH+100&&a.y>-100&&a.y<HEIGHT+100);
+      const hurtPlayer=(target,raw)=>{
+      if(!target||target.downed)return;
+      const dmg=Math.max(1,raw-target.armor*.7);target.hp=Math.max(0,target.hp-dmg);
+      this.broadcast({type:'enemyAttack',enemyId:null,playerId:target.id,damage:dmg,x:target.x,y:target.y,serverNow:now});
+      if(target.hp<=0){target.hp=0;target.downed=true;target.reviveProgress=0;target.ix=target.iy=0;this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y});}
+    };
+    const fireEnemyShot=(e,target,count=1,speed=5.2,damageMult=.8,kind='arrow',spread=.22)=>{
+      const a=Math.atan2(target.y-e.y,target.x-e.x);for(let j=0;j<count;j++){const aa=a+(count>1?(j-(count-1)/2)*spread:0);
+        this.projectiles.push({id:'b'+(++this.attackSeq),owner:'enemy',source:e.id,x:e.x+Math.cos(aa)*18,y:e.y+Math.sin(aa)*18,
+          vx:Math.cos(aa)*speed,vy:Math.sin(aa)*speed,angle:aa,life:kind==='fire'?3:2.6,damage:e.atk*damageMult,radius:kind==='magic'?10:8,crit:false,kind});}
+      this.broadcast({type:'enemyShoot',enemyId:e.id,x:e.x,y:e.y,angle:a,count,speed,kind,serverNow:now});
+    };
+    const spawnWitchling=(e)=>{if(this.enemies.length>=15)return;this.spawn('witchling',e.x+38,e.y+18);this.spawned--;};
 
-    // A downed player stays down until another living player stands nearby for 2 seconds.
-    for(const p of this.players.values()){
-      if(!p.downed){p.reviveProgress=0;continue}
-      let rescuer=null;
-      for(const q of this.players.values()){
-        if(q.id!==p.id && !q.downed && dist(p,q)<=68){rescuer=q;break}
-      }
-      if(rescuer){
-        p.reviveProgress=Math.min(2,p.reviveProgress+dt);
-        if(p.reviveProgress>=2){
-          p.downed=false;p.hp=Math.max(1,Math.round(p.maxHp*.35));p.reviveProgress=0;p.inv=1.2;
-          this.broadcast({type:'revive',playerId:p.id,reviverId:rescuer.id,x:p.x,y:p.y});
-        }
-      }else p.reviveProgress=Math.max(0,p.reviveProgress-dt*2);
-    }
-    if(this.phase==='battle' && this.players.size>0){
-      let alive=0;for(const q of this.players.values())if(!q.downed)alive++;
-      if(alive===0){
-        this.phase='gameover';
-        this.enemies=[];this.spawned=0;this.picks.clear();this.offer=null;
-        this.broadcast({type:'gameOver',reason:'allDowned',serverNow:Date.now()});
-        this.broadcastState(true);
-        return;
-      }
-    }
     for(const e of this.enemies){
+      e.hit=Math.max(0,(e.hit||0)-dt);e.specialCd=Math.max(0,(e.specialCd||0)-dt);e.shieldT=Math.max(0,(e.shieldT||0)-dt);e.poison=Math.max(0,(e.poison||0)-dt);
+      let target=null,bd=Infinity;for(const p of this.players.values()){if(p.downed)continue;const d=dist(e,p);if(d<bd){bd=d;target=p}}
+      if(!target)continue;
+      const dx=target.x-e.x,dy=target.y-e.y,d=Math.hypot(dx,dy)||1,contact=e.boss?72:46;
+
+      // Bosses retain the Solo boss roster and special attacks.
       if(e.boss){
-        e.specialCd=Math.max(0,(e.specialCd||0)-dt);
-        e.shieldT=Math.max(0,(e.shieldT||0)-dt);
         if(e.specialCd<=0){
-          const living=[...this.players.values()].filter(p=>!p.downed);
-          if(living.length){
-            let target=living[0],bd=dist(e,target);
-            for(const q of living){const qd=dist(e,q);if(qd<bd){bd=qd;target=q}}
-            const a=Math.atan2(target.y-e.y,target.x-e.x);
-            const sk=e.bossDef?.skill;
-            e.specialCd=2.2+Math.random()*1.5;
-            if(sk==='dash'){e.dashT=.55;e.dashA=a}
-            else if(sk==='charge'){e.chargeT=.65;e.chargeA=a}
-            else if(sk==='blink'){
-              e.x=clamp(target.x-Math.cos(a)*150,60,WIDTH-60);e.y=clamp(target.y-Math.sin(a)*150,90,HEIGHT-60);
-              this.broadcast({type:'bossFx',kind:'blink',enemyId:e.id,x:e.x,y:e.y});
-            } else if(sk==='slam'){
-              if(bd<210){target.hp=Math.max(0,target.hp-Math.max(1,e.atk*1.6));if(target.hp<=0){target.hp=0;target.downed=true;target.ix=target.iy=0;this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y})}}
-              this.broadcast({type:'bossFx',kind:'slam',enemyId:e.id,x:e.x,y:e.y});
-            } else if(sk==='shield'){e.shieldT=1.2;this.broadcast({type:'bossFx',kind:'shield',enemyId:e.id,x:e.x,y:e.y})}
-            else if(sk==='summon'){for(let i=0;i<2;i++)this.spawn();this.broadcast({type:'bossFx',kind:'summon',enemyId:e.id,x:e.x,y:e.y})}
-            else if(sk==='volley'||sk==='scythe'||sk==='nova'){
-              const count=sk==='volley'?7:5, speed=sk==='scythe'?5.8:4.7;
-              for(let j=0;j<count;j++){const aa=a+(j-(count-1)/2)*.18;this.projectiles.push({id:'b'+(++this.attackSeq),owner:'enemy',source:e.id,x:e.x,y:e.y,vx:Math.cos(aa)*speed,vy:Math.sin(aa)*speed,angle:aa,life:2.5,damage:e.atk*.45,radius:8,crit:false});}
-              this.broadcast({type:'bossFx',kind:'volley',enemyId:e.id,x:e.x,y:e.y});
-            } else if(sk==='poison'){
-              this.projectiles.push({id:'b'+(++this.attackSeq),owner:'enemy',source:e.id,x:e.x,y:e.y,vx:Math.cos(a)*3.8,vy:Math.sin(a)*3.8,angle:a,life:2.8,damage:e.atk*.65,radius:10,crit:false,poison:true});
-            }
-          }
+          e.specialCd=2.2+Math.random()*1.5;const a=Math.atan2(dy,dx),sk=e.bossDef?.skill;
+          if(sk==='dash'){e.dashT=.55;e.dashA=a}
+          else if(sk==='charge'){e.chargeT=.65;e.chargeA=a}
+          else if(sk==='blink'){e.x=clamp(target.x-Math.cos(a)*150,60,WIDTH-60);e.y=clamp(target.y-Math.sin(a)*150,90,HEIGHT-60);this.broadcast({type:'bossFx',kind:'blink',enemyId:e.id,x:e.x,y:e.y})}
+          else if(sk==='slam'){if(bd<210)hurtPlayer(target,e.atk*1.6);this.broadcast({type:'bossFx',kind:'slam',enemyId:e.id,x:e.x,y:e.y})}
+          else if(sk==='shield'){e.shieldT=1.2;this.broadcast({type:'bossFx',kind:'shield',enemyId:e.id,x:e.x,y:e.y})}
+          else if(sk==='summon'){for(let i=0;i<2;i++)this.spawn();this.spawned=Math.max(0,this.spawned-2);this.broadcast({type:'bossFx',kind:'summon',enemyId:e.id,x:e.x,y:e.y})}
+          else if(sk==='volley'||sk==='scythe'||sk==='nova'){const count=sk==='volley'?7:5;fireEnemyShot(e,target,count,sk==='scythe'?5.8:4.7,.45,'arrow',.18);this.broadcast({type:'bossFx',kind:'volley',enemyId:e.id,x:e.x,y:e.y})}
+          else if(sk==='poison'){fireEnemyShot(e,target,1,3.8,.65,'magic',0)}
         }
         if(e.dashT>0){e.dashT-=dt;e.x+=Math.cos(e.dashA)*7*60*dt;e.y+=Math.sin(e.dashA)*7*60*dt}
         else if(e.chargeT>0){e.chargeT-=dt;e.x+=Math.cos(e.chargeA)*8*60*dt;e.y+=Math.sin(e.chargeA)*8*60*dt}
       }
-      let target=null,bd=Infinity;for(const p of this.players.values()){if(p.downed)continue;const d=dist(e,p);if(d<bd){bd=d;target=p}}
-      if(!target)continue;
-      const dx=target.x-e.x,dy=target.y-e.y,d=Math.hypot(dx,dy)||1,contact=e.boss?72:46;
-      
-      // Ranged enemies keep their distance and fire authoritative projectiles.
-      if(e.keepDistance && !e.dashT && !e.chargeT){
-        const shootRange=e.shootRange||250;
-        const preferred=e.type==='archer'?220:280;
-        if(d<preferred){
-          e.x-=dx/d*e.speed*60*dt*1.35;e.y-=dy/d*e.speed*60*dt*1.35;
-        }else if(d>shootRange){
-          e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt;
-        }
-        e.lastShot=(e.lastShot||0)+dt;
-        const shotCd=e.type==='archer'?1.25:2.0;
-        if(e.lastShot>=shotCd && d<=shootRange){
-          e.lastShot=0;
-          const a=Math.atan2(dy,dx),count=e.type==='mage'?3:1;
-          const speed=e.type==='mage'?3.8:5.2,damageMult=e.type==='mage'?.9:.8;
-          for(let j=0;j<count;j++){
-            const aa=a+(count>1?(j-(count-1)/2)*.22:0);
-            this.projectiles.push({id:'b'+(++this.attackSeq),owner:'enemy',source:e.id,
-              x:e.x+Math.cos(aa)*18,y:e.y+Math.sin(aa)*18,vx:Math.cos(aa)*speed,vy:Math.sin(aa)*speed,
-              angle:aa,life:2.6,damage:e.atk*damageMult,radius:e.type==='mage'?10:8,crit:false,
-              kind:e.type==='mage'?'magic':'arrow'});
-          }
-          this.broadcast({type:'enemyShoot',enemyId:e.id,x:e.x,y:e.y,angle:a,count,speed,
-            kind:e.type==='mage'?'magic':'arrow',serverNow:now});
-        }
-      }else if(!e.dashT&&!e.chargeT){
+
+      // Exact Solo enemy behaviors.
+      if(e.type==='archer'){
+        if(d>280){e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt}else if(d<190){e.x-=dx/d*e.speed*60*dt;e.y-=dy/d*e.speed*60*dt}
+        e.lastShot=(e.lastShot||0)+dt;if(e.lastShot>=1.25&&d<=280){e.lastShot=0;fireEnemyShot(e,target,1,5.2,.8,'arrow',0)}
+      }else if(e.type==='mage'){
+        if(d>330){e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt}else if(d<250){e.x-=dx/d*e.speed*60*dt;e.y-=dy/d*e.speed*60*dt}
+        e.lastShot=(e.lastShot||0)+dt;if(e.lastShot>=2&&d<=330){e.lastShot=0;fireEnemyShot(e,target,3,3.8,.9,'magic',.22)}
+      }else if(e.type==='witch'){
+        if(d>390){e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt}else if(d<300){e.x-=dx/d*e.speed*60*dt;e.y-=dy/d*e.speed*60*dt}
+        e.lastShot=(e.lastShot||0)+dt;if(e.lastShot>=2&&d<=390){e.lastShot=0;fireEnemyShot(e,target,1,4.4,1.15,'fire',0)}
+        if(e.specialCd<=0){e.specialCd=9.5;spawnWitchling(e);this.broadcast({type:'bossFx',kind:'summon',enemyId:e.id,x:e.x,y:e.y})}
+      }else if(e.type==='witchling'){
+        if(d>90){e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt}else{e.attack=(e.attack||0)-dt;if(e.attack<=0){e.attack=1.8;hurtPlayer(target,e.atk)}}
+      }else if(e.type==='brute'){
+        if(e.jumpT>0){e.jumpT-=dt;e.x+=Math.cos(e.jumpA)*7.5*60*dt;e.y+=Math.sin(e.jumpA)*7.5*60*dt;if(e.jumpT<=0){if(dist(e,target)<90)hurtPlayer(target,e.atk*1.8);this.broadcast({type:'bossFx',kind:'slam',enemyId:e.id,x:e.x,y:e.y})}}
+        else if(d>contact){e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt}else{e.attack-=dt;if(e.attack<=0){e.attack=2.1;e.jumpT=.65;e.jumpA=Math.atan2(dy,dx)}}
+      }else if(e.type==='guard'){
+        if(d>170){e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt}else{e.attack-=dt;if(e.attack<=0){e.attack=1.25;hurtPlayer(target,e.atk)}}
+      }else if(e.type==='mimic'){
+        if(d>130){e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt}else{e.lastShot=(e.lastShot||0)+dt;if(e.lastShot>=1.55){e.lastShot=0;fireEnemyShot(e,target,1,4.5,.9,'arrow',0)}}
+      }else if(e.type==='sentinel'){
+        if(d>150){e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt}else{e.lastShot=(e.lastShot||0)+dt;if(e.lastShot>=1.7){e.lastShot=0;fireEnemyShot(e,target,1,4.1,.75,'arrow',0)}}
+      }else if(e.type==='lovebreaker'){
+        e.attack-=dt;e.specialCd-=dt;
+        if(e.specialCd<=0){e.specialCd=4.8;e.chargeT=.55;e.chargeA=Math.atan2(dy,dx)}
+        if(e.chargeT>0){e.chargeT-=dt;e.x+=Math.cos(e.chargeA)*8.5*60*dt;e.y+=Math.sin(e.chargeA)*8.5*60*dt;if(e.chargeT<=0){if(dist(e,target)<105)hurtPlayer(target,e.atk*2.2);fireEnemyShot(e,target,3,4.8,.55,'arrow',.35)}}
+        else if(d>contact+8){e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt}else if(e.attack<=0){e.attack=1;hurtPlayer(target,e.atk*1.25)}
+      }else if(!e.boss){
         if(d>contact){e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt}
-      }
+      }else if(!e.dashT&&!e.chargeT&&d>contact){e.x+=dx/d*e.speed*60*dt;e.y+=dy/d*e.speed*60*dt}
 
-      // Melee enemies hit on the first frame they actually touch the player.
-      const touching=d<contact;
-      if(touching && !e.inContact && !e.keepDistance){
-        e.inContact=true;e.contactDamage=0;
-        const dmg=Math.max(1,e.atk-target.armor*.7);
-        target.hp=Math.max(0,target.hp-dmg);
-        this.broadcast({type:'enemyAttack',enemyId:e.id,playerId:target.id,damage:dmg,x:target.x,y:target.y,serverNow:now});
-        if(target.hp<=0){target.hp=0;target.downed=true;target.reviveProgress=0;target.ix=target.iy=0;
-          this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y})}
-      }else if(!touching){
-        e.inContact=false;e.contactDamage=0;
-      }else if(touching && !e.keepDistance){
-        e.contactDamage=(e.contactDamage||0)+dt;
-        if(e.contactDamage>=0.65){
-          e.contactDamage=0;
-          const dmg=Math.max(1,e.atk*.55-target.armor*.35);
-          target.hp=Math.max(0,target.hp-dmg);
-          this.broadcast({type:'enemyAttack',enemyId:e.id,playerId:target.id,damage:dmg,x:target.x,y:target.y,serverNow:now});
-          if(target.hp<=0){target.hp=0;target.downed=true;target.reviveProgress=0;target.ix=target.iy=0;
-            this.broadcast({type:'downed',playerId:target.id,x:target.x,y:target.y})}
-        }
+      // Melee contact: hit on first actual touch, then repeat like Solo's attack timers.
+      if(!['archer','mage','witch','witchling','brute','guard','mimic','sentinel','lovebreaker'].includes(e.type) && (!e.boss || (!e.dashT&&!e.chargeT))){
+        const touching=dist(e,target)<contact;
+        if(touching){e.inContact=true;e.contactDamage=(e.contactDamage||0)-dt;if(e.contactDamage<=0){e.contactDamage=e.type==='charger'?.48:e.type==='assassin'?.42:e.type==='berserker'?.36:e.type==='lancer'?.62:.78;hurtPlayer(target,e.atk)}}else{e.inContact=false;e.contactDamage=0}
       }
-
-      e.x=clamp(e.x,-60,WIDTH+60);e.y=clamp(e.y,-60,HEIGHT+60);e.hit=Math.max(0,e.hit-dt);
+      e.x=clamp(e.x,-60,WIDTH+60);e.y=clamp(e.y,-60,HEIGHT+60);
     }
     const targetCount=this.wave%5===0?1:this.wave*3+4;
     if(this.spawned<targetCount&&this.enemies.length<Math.min(6+this.wave,15))this.spawn();
