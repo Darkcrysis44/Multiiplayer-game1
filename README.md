@@ -1,28 +1,64 @@
-# Love Sword Arena — Complete Server-Authoritative Multiplayer
+# Love Sword Arena — Strong Server-Authoritative Multiplayer
 
-## Structure
+## What is authoritative
 
-- `public/index.html` — game client
-- `public/music.mp3` — music asset
-- `worker.js` — Cloudflare Worker + Durable Object game server
-- `wrangler.toml` — Worker, Assets and Durable Object configuration
+The Cloudflare Durable Object is the game server for each room. The browser is **not** allowed to authoritatively set:
 
-## Server authority
-
-The Durable Object owns:
-
-- player positions and movement
+- player X/Y position
 - HP
-- sword cooldown / hit validation
-- bow cooldown
-- projectile simulation and collision
+- sword hit results
+- bow hit results
+- projectile movement
 - damage
-- room state snapshots
+- cooldown validation
 
-The client sends input and attack requests; it does not authoritatively change HP.
+The client only sends:
+- movement input + aim angle
+- weapon selection
+- an attack sequence number
+
+The server assigns the player ID from the WebSocket connection and ignores any client-supplied target/player identity.
+
+## Multiplayer flow
+
+```text
+Client input
+  -> Cloudflare Worker
+  -> Durable Object room
+  -> server simulation / collision
+  -> authoritative state
+  -> WebSocket broadcast
+  -> every client renders the same state
+```
+
+Sword:
+- 270 ms server cooldown
+- 125 px range
+- 0.95 rad total angle
+- target body radius included
+- damage decided by server
+
+Bow:
+- 420 ms server cooldown
+- 7.2 speed
+- 2.4 s lifetime
+- projectile is spawned and simulated by server
+- swept segment/circle collision prevents fast arrows tunnelling through players
+
+Movement:
+- server owns velocity/position
+- client sends only WASD/arrow input
+- client may predict locally for responsiveness
+- periodic server snapshots reconcile the prediction
 
 ## Deploy
 
-Deploy as a Cloudflare Worker using Wrangler. Do not deploy this package as Pages-only if you want the multiplayer server.
+Deploy this folder as a **Cloudflare Worker**, not as Pages-only static hosting.
 
-The client connects to `/ws?room=<room>`.
+`public/` contains the static game:
+- `public/index.html`
+- `public/music.mp3`
+
+The Worker serves those assets and `/ws` is the multiplayer WebSocket endpoint.
+
+Requires a Durable Object binding named `ROOM` with class `Room`, configured by `wrangler.toml`.

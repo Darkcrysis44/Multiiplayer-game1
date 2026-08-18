@@ -375,12 +375,7 @@ body:before{
 .lsa-shop-tab{border:1px solid #ff9db555;background:#160d18;color:#ffdce6;border-radius:10px;padding:8px 12px;cursor:pointer;font-weight:700}
 .lsa-shop-tab.active{background:#ff668f33;border-color:#ff9db5aa;box-shadow:0 0 12px #ff6e9422}
 </style>
-<style>.lsa-chance-panel{grid-column:1/-1;background:#180b15;border:1px solid #5f2a49;border-radius:14px;padding:12px}.lsa-chances{display:grid;gap:8px;margin-top:8px}.lsa-chances>div{padding:8px;border-bottom:1px solid #3b1b2e;font-size:11px}.lsa-preview{margin-top:10px;font-size:11px}.lsa-loot-row{padding:4px 0}.lsa-divider{grid-column:1/-1;border-top:2px solid #7b3558;margin:8px 0;padding-top:10px}</style>
-<script>
-window.LSA_WS_URL = (location.protocol === "https:" ? "wss://" : "ws://") +
-  location.host + "/ws?room=main";
-</script>
-</head>
+<style>.lsa-chance-panel{grid-column:1/-1;background:#180b15;border:1px solid #5f2a49;border-radius:14px;padding:12px}.lsa-chances{display:grid;gap:8px;margin-top:8px}.lsa-chances>div{padding:8px;border-bottom:1px solid #3b1b2e;font-size:11px}.lsa-preview{margin-top:10px;font-size:11px}.lsa-loot-row{padding:4px 0}.lsa-divider{grid-column:1/-1;border-top:2px solid #7b3558;margin:8px 0;padding-top:10px}</style></head>
 <body>
 <div class="decor">
  <span class="heart-float h1">♥</span><span class="heart-float h2">♥</span><span class="heart-float h3">♡</span><span class="heart-float h4">♥</span>
@@ -914,52 +909,178 @@ function drawEnemy(e){
  const bw=Math.max(20,e.r*2);const barY=boss?-72:-34;ac.fillStyle='#160911';ac.fillRect(-bw/2,barY,bw,6);ac.fillStyle=boss?'#ffc857':'#ff728f';ac.fillRect(-bw/2,barY,bw*Math.max(0,e.hp/e.maxHp),6);ac.restore()
 }
 // ===== SERVER-AUTHORITATIVE MULTIPLAYER =====
-const multi={socket:null,connected:false,room:'love-sword-arena',id:null,players:{},projectiles:{},pendingAttacks:new Map(),lastSend:0,seq:0};
+const multi={
+  socket:null,connected:false,room:'love-sword-arena',id:null,players:{},projectiles:{},
+  lastSend:0,inputSeq:0,attackSeq:0,serverOffset:0,reconnectTimer:null
+};
 function multiStatus(t){const el=$('multiStatus');if(el)el.textContent='Multiplayer: '+t}
-function multiWsUrl(){const proto=location.protocol==='https:'?'wss':'ws';return proto+'://'+location.host+'/ws?room='+encodeURIComponent(multi.room)}
+function multiWsUrl(){
+  const proto=location.protocol==='https:'?'wss':'ws';
+  return proto+'://'+location.host+'/ws?room='+encodeURIComponent(multi.room)
+}
 function connectMultiplayer(){
-  if(multi.connected) return;
+  if(multi.connected||multi.socket?.readyState===WebSocket.CONNECTING)return;
   multiStatus('connecting…');
   try{multi.socket=new WebSocket(multiWsUrl())}catch(e){multiStatus('connection failed');return}
-  multi.socket.onopen=()=>{multi.connected=true;multiStatus('connected • room '+multi.room);multi.socket.send(JSON.stringify({type:'join',name:'Player'}));};
-  multi.socket.onclose=()=>{multi.connected=false;multiStatus('offline');};
+  multi.socket.onopen=()=>{
+    multi.connected=true;multiStatus('connected • room '+multi.room);
+  };
+  multi.socket.onclose=()=>{
+    multi.connected=false;multiStatus('offline');
+    clearTimeout(multi.reconnectTimer);
+    multi.reconnectTimer=setTimeout(connectMultiplayer,1200);
+  };
   multi.socket.onerror=()=>multiStatus('connection error');
-  multi.socket.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch{return}handleMultiMessage(m)};
+  multi.socket.onmessage=e=>{
+    if(typeof e.data!=='string'||e.data.length>1024*1024)return;
+    let m;try{m=JSON.parse(e.data)}catch{return}
+    handleMultiMessage(m)
+  };
 }
 function handleMultiMessage(m){
-  if(m.type==='welcome'){multi.id=m.id;multi.players=m.players||{};for(const id in multi.players)multi.players[id].last=performance.now();return}
-  if(m.type==='state'){multi.players=m.players||{};for(const id in multi.players)multi.players[id].last=performance.now();syncLocalFromServer();return}
-  if(m.type==='playerJoined'){multi.players[m.player.id]=m.player;return}
+  if(m.type==='welcome'){
+    multi.id=m.playerId;
+    multi.players=m.state?.players||{};
+    multi.projectiles={};
+    if(Number.isFinite(m.serverTime))multi.serverOffset=m.serverTime-Date.now();
+    return;
+  }
+  if(m.type==='state'){
+    const incoming=m.state?.players||{};
+    for(const id in incoming){
+      const old=multi.players[id];
+      multi.players[id]={...(old||{}),...incoming[id],last:performance.now()};
+    }
+    for(const id in multi.players)if(!incoming[id])delete multi.players[id];
+    const ps=m.state?.projectiles||[];
+    for(const q of ps)multi.projectiles[q.id]=q;
+    if(Number.isFinite(m.serverTime))multi.serverOffset=m.serverTime-Date.now();
+    syncLocalFromServer();
+    return;
+  }
+  if(m.type==='playerJoined'){
+    if(m.player?.id)multi.players[m.player.id]={...m.player,last:performance.now()};
+    return;
+  }
   if(m.type==='playerLeft'){delete multi.players[m.id];return}
-  if(m.type==='attackConfirmed'){const p=multi.players[m.playerId];if(p)p.slashT=.22;return}
-  if(m.type==='hpChanged'){const p=multi.players[m.playerId];if(p){p.hp=m.hp;p.maxHp=m.maxHp||p.maxHp}return}
-  if(m.type==='projectileSpawned'){multi.projectiles[m.id]=m.projectile;return}
-  if(m.type==='projectileRemoved'){delete multi.projectiles[m.id];return}
+  if(m.type==='attackConfirmed'){
+    const p=multi.players[m.playerId];
+    if(p){p.slashT=.22;p.angle=Number.isFinite(m.angle)?m.angle:p.angle}
+    // Server confirmation is also the authoritative bow spawn trigger.
+    if(m.playerId===multi.id && m.weapon==='sword')arena.player.slashT=.22;
+    return
+  }
+  if(m.type==='hpChanged'){
+    const p=multi.players[m.playerId];
+    if(p){p.hp=m.hp;p.maxHp=m.maxHp||p.maxHp}
+    if(m.playerId===multi.id){arena.player.hp=m.hp;arenaStats()}
+    return
+  }
+  if(m.type==='projectileSpawned'){
+    // Remove the local prediction when the server's canonical projectile arrives.
+    if(m.projectile?.ownerId===multi.id){
+      arena.projectiles=arena.projectiles.filter(q=>q.owner!=='localVisual');
+    }
+    multi.projectiles[m.id]=m.projectile;
+    return
+  }
+  if(m.type==='projectileRemoved'){
+    delete multi.projectiles[m.id];return
+  }
 }
-function sendMulti(msg){if(multi.connected&&multi.socket.readyState===WebSocket.OPEN)multi.socket.send(JSON.stringify(msg))}
-function syncLocalFromServer(){const me=multi.players[multi.id];if(!me)return;arena.player.x=me.x;arena.player.y=me.y;arena.player.hp=me.hp;arena.player.angle=me.angle;arena.player.attackCd=me.attackCd||0;}
+function sendMulti(msg){
+  if(multi.connected&&multi.socket.readyState===WebSocket.OPEN)
+    multi.socket.send(JSON.stringify(msg))
+}
+function syncLocalFromServer(){
+  const me=multi.players[multi.id];if(!me)return;
+  // Server is authoritative, but blend small corrections so 360ms RTT does not
+  // make the local player visibly snap every 50ms.
+  const ex=me.x-arena.player.x, ey=me.y-arena.player.y;
+  if(Math.hypot(ex,ey)>90){arena.player.x=me.x;arena.player.y=me.y}
+  else {arena.player.x+=ex*.35;arena.player.y+=ey*.35}
+  arena.player.hp=me.hp;
+  arena.player.angle=me.angle;
+}
 function multiAttack(angle){
   if(!multi.connected||arena.player.attackCd>0)return;
   const weapon=arenaState.activeWeaponType==='bow'?'bow':'sword';
-  arena.player.angle=angle;arena.player.attackCd=weapon==='bow'?.42:.27;
-  if(weapon==='sword'){ arena.player.slashT=.22; arena.slashes.push({x:arena.player.x,y:arena.player.y,angle,t:.22}); sfx('slash'); }
-  else { arena.projectiles.push({x:arena.player.x+Math.cos(angle)*38,y:arena.player.y+Math.sin(angle)*38,vx:Math.cos(angle)*7.2,vy:Math.sin(angle)*7.2,life:2.4,damage:0,angle,owner:'localVisual',kind:'playerArrow'}); sfx('slash'); }
-  const attackId=multi.id+'-'+(++multi.seq);
-  sendMulti({type:'playerAttack',attackId,weapon,angle,targetId:null});
+  arena.player.angle=angle;
+  arena.player.attackCd=weapon==='bow'?.42:.27;
+
+  // Local presentation is immediate. It never changes enemy HP.
+  if(weapon==='sword'){
+    arena.player.slashT=.22;
+    arena.slashes.push({x:arena.player.x,y:arena.player.y,angle,t:.22});
+    sfx('slash');
+  }else{
+    arena.projectiles.push({
+      x:arena.player.x,y:arena.player.y,
+      vx:Math.cos(angle)*7.2,vy:Math.sin(angle)*7.2,
+      life:2.4,damage:0,angle,owner:'localVisual',kind:'playerArrow'
+    });
+    sfx('slash');
+  }
+
+  const seq=++multi.attackSeq;
+  sendMulti({type:'playerAttack',seq,weapon,angle});
 }
 function updateMulti(dt){
   if(!multi.connected)return;
   const p=arena.player;
-  // Client sends input state/position; server clamps and owns the canonical state.
+  p.attackCd=Math.max(0,p.attackCd-dt);
+  p.slashT=Math.max(0,p.slashT-dt);
+
+  // Client prediction for movement; server remains authoritative.
+  let dx=0,dy=0;
+  if(arena.keys.w||arena.keys.ArrowUp)dy--;
+  if(arena.keys.s||arena.keys.ArrowDown)dy++;
+  if(arena.keys.a||arena.keys.ArrowLeft)dx--;
+  if(arena.keys.d||arena.keys.ArrowRight)dx++;
+  if(dx||dy){
+    const l=Math.hypot(dx,dy),sp=combatStats().spd;
+    p.x+=dx/l*sp*60*dt;p.y+=dy/l*sp*60*dt;
+  }
+  p.x=Math.max(30,Math.min(arena.w-30,p.x));
+  p.y=Math.max(62,Math.min(arena.h-30,p.y));
+
   const now=performance.now();
-  if(now-multi.lastSend>50){multi.lastSend=now;sendMulti({type:'playerState',x:p.x,y:p.y,angle:p.angle,weapon:arenaState.activeWeaponType==='bow'?'bow':'sword'});}
-  for(const q of Object.values(multi.projectiles)){q.x+=q.vx*60*dt;q.y+=q.vy*60*dt;q.life-=dt}
-  for(const q of arena.projectiles){if(q.owner==='localVisual'){q.x+=q.vx*60*dt;q.y+=q.vy*60*dt;q.life-=dt}}
+  if(now-multi.lastSend>50){
+    multi.lastSend=now;
+    sendMulti({
+      type:'input',seq:++multi.inputSeq,
+      up:!!(arena.keys.w||arena.keys.ArrowUp),
+      down:!!(arena.keys.s||arena.keys.ArrowDown),
+      left:!!(arena.keys.a||arena.keys.ArrowLeft),
+      right:!!(arena.keys.d||arena.keys.ArrowRight),
+      angle:p.angle,
+      weapon:arenaState.activeWeaponType==='bow'?'bow':'sword'
+    });
+  }
+
+  // Only prediction visuals move locally. Server projectiles are canonical.
+  for(const q of arena.projectiles){
+    if(q.owner==='localVisual'){q.x+=q.vx*60*dt;q.y+=q.vy*60*dt;q.life-=dt}
+  }
   arena.projectiles=arena.projectiles.filter(q=>q.owner!=='localVisual'||q.life>0);
-  multi.projectiles=Object.fromEntries(Object.entries(multi.projectiles).filter(([,q])=>q.life>0));
 }
 function drawMultiPlayers(){
-  for(const [id,p] of Object.entries(multi.players)){if(id===multi.id)continue;const fake={x:p.x,y:p.y,hp:p.hp,maxHp:p.maxHp||100,inv:0,angle:p.angle||0};const old=arenaState.activeWeaponType;arenaState.activeWeaponType=p.weapon==='bow'?'bow':'sword';drawPlayer(fake);if(p.slashT>0){ac.save();ac.translate(p.x,p.y);ac.rotate(p.angle||0);ac.globalAlpha=p.slashT/.22;ac.strokeStyle='#fff0f5';ac.lineWidth=7;ac.shadowColor='#ff6e94';ac.shadowBlur=18;ac.beginPath();ac.arc(18,0,55,-1,.8);ac.stroke();ac.restore();p.slashT=Math.max(0,p.slashT-.016)}arenaState.activeWeaponType=old;}}
+  for(const [id,p] of Object.entries(multi.players)){
+    if(id===multi.id)continue;
+    const fake={x:p.x,y:p.y,hp:p.hp,maxHp:p.maxHp||100,inv:0,angle:p.angle||0};
+    const old=arenaState.activeWeaponType;
+    arenaState.activeWeaponType=p.weapon==='bow'?'bow':'sword';
+    drawPlayer(fake);
+    if(p.slashT>0){
+      ac.save();ac.translate(p.x,p.y);ac.rotate(p.angle||0);
+      ac.globalAlpha=p.slashT/.22;ac.strokeStyle='#fff0f5';ac.lineWidth=7;
+      ac.shadowColor='#ff6e94';ac.shadowBlur=18;
+      ac.beginPath();ac.arc(18,0,55,-1,.8);ac.stroke();ac.restore();
+      p.slashT=Math.max(0,p.slashT-.016);
+    }
+    arenaState.activeWeaponType=old;
+  }
+}
 function multiplayerSlash(angle){multiAttack(angle)}
 
 function arenaLoop(t){const dt=Math.min(.033,(t-arena.last)/1000||0);arena.last=t;if(arena.mode==='multiplayer')updateMulti(dt);else updateArena(dt);drawArena();if(arenaModal&&!arenaModal.classList.contains('hidden'))requestAnimationFrame(arenaLoop)}
