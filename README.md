@@ -1,41 +1,43 @@
-# Love Sword Arena Multiplayer v15 — Cloudflare Workers
+# Love Sword Arena — Co-op Multiplayer Edition
 
-Bu sürüm Cloudflare Workers Static Assets yapısına göre düzenlenmiştir.
+Bu sürüm mevcut solo arena sistemini korur ve üstüne oda tabanlı co-op multiplayer ekler.
 
-## Klasör yapısı
+## Özellikler
+- Aynı `index.html` içindeki mevcut solo level/XP/rebirth/gear/shop sistemi korunur.
+- Oda kodu ile 2+ oyuncu aynı maça bağlanabilir.
+- İlk giren oyuncu host olur; düşerse/disconnect olursa sıradaki oyuncuya host rolü aktarılır.
+- Host düşmanların, wave'in ve projectile dünyasının otoritesidir; diğer oyuncular kendi inputlarını host'a yollar.
+- Oyuncular aynı arena içinde görünür.
+- Solo level, XP, rebirth, silah, armor, accessory ve passive ilerlemesi oyuncunun kendi tarayıcısında korunur.
+- Oyuncu ölünce klasik solo reset yerine **DOWNED** durumuna geçer.
+- Yakındaki yaşayan takım arkadaşı `E` ile veya paneldeki revive düğmesiyle oyuncuyu yaklaşık %45 HP ile diriltebilir.
+- Wave/world snapshot host tarafından yaklaşık 11 FPS civarında paylaşılır.
+- Host ayrılırsa server yeni host seçer ve mevcut world snapshot'ını yeni host'a gönderir.
 
-- `public/index.html` — oyun
-- `public/music.mp3` — orijinal solo müzik asset'i
-- `worker.js` — `/ws` WebSocket multiplayer sunucusu
-- `wrangler.jsonc` — Static Assets yapılandırması
-
-## Deploy
-
-Node.js 18+ ile:
+## Çalıştırma
+Node.js 18+ kurulu olmalı.
 
 ```bash
 npm install
-npm run deploy
+npm start
 ```
 
-Cloudflare hesabına giriş gerekirse:
+Sonra tarayıcıda:
+`http://localhost:8787/`
 
-```bash
-npx wrangler login
-```
+İki farklı cihaz aynı LAN'daysa server bilgisayarının LAN IP'si üzerinden:
+`http://SUNUCU-IP:8787/`
 
-## Neden `public`?
+İnternet üzerinden oynatmak için bu Node sunucusunu HTTPS/WSS destekleyen bir hosting'e koymak gerekir. `PORT` environment variable ile port değiştirilebilir.
 
-Önceki sürümde assets directory proje köküydü. Bu, `worker.js`, config ve diğer proje dosyalarının da asset taramasına girmesine neden olabiliyordu. v15'te yalnızca `public/` statik asset olarak yüklenir.
-
-Cloudflare'ın güncel Workers Static Assets sınırında tek bir statik dosya 25 MiB'a kadar olabilir. Orijinal `music.mp3` yaklaşık 8.6 MiB olduğu için tek başına bu sınıra takılmamalıdır.
-
-## Multiplayer ödülleri
-
-Bir oyuncu düşman öldürdüğünde:
-- Öldüren oyuncu: %100 XP + %100 para
-- Diğer oyuncular: %75 XP + %75 para
+## Oyun akışı
+1. Love Sword Arena'yı aç.
+2. Multiplayer kartından `CREATE ROOM` veya aynı oda kodunu girip `JOIN` seç.
+3. Diğer oyuncular aynı kodla bağlansın.
+4. İlk oyuncu host olur ve düşman dünyasını simüle eder.
+5. Wave temizlenince host'un wave-upgrade ekranı açılır; oyuncuların kalıcı level/gear ilerlemeleri korunur.
+6. Bir oyuncu 0 HP olduğunda downed olur. Yakındaki takım arkadaşı E'ye basarak revive gönderir.
+7. Host ayrılırsa oda içindeki sonraki oyuncu host olur.
 
 ## Not
-
-Cloudflare Dashboard'daki eski Pages sürükle-bırak yöntemi yerine bu proje için `npm run deploy` ile Workers deploy edilmesi önerilir.
+Bu sürüm dışarıdan bir matchmaking servisi gerektirmez; `server.js` küçük bir WebSocket oda sunucusudur. Production için HTTPS reverse proxy, rate limiting, authentication ve server-side anti-cheat eklenmesi önerilir.

@@ -1,11 +1,11 @@
 {
   "name": "love-sword-arena-multiplayer",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "start": "node server.js"
   },
-  "devDependencies": {
-    "wrangler": "^4.34.0"
+  "dependencies": {
+    "ws": "^8.18.0"
   }
 }

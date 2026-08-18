@@ -840,7 +840,7 @@ function spawnEnemy(forceBoss=false){
  if(boss){bossIndex=(Math.floor(arena.wave/5)-1)%bossDefs.length;bossDef=bossDefs[bossIndex];hp*=bossDef.hp;spd*=bossDef.spd;atk*=bossDef.atk;r=44}
  const enemyMeta={broken:['Broken Heart','Common'],charger:['Heart Charger','Uncommon'],duelist:['Heart Duelist','Uncommon'],archer:['Cupid Archer','Uncommon'],lancer:['Rose Lancer','Uncommon'],tank:['Grief Tank','Rare'],mage:['Heart Mage','Rare'],splitter:['Split Heart','Rare'],sentinel:['Rose Sentinel','Rare'],guard:['Cupid Guard','Uncommon'],mimic:['Heart Mimic','Rare'],assassin:['Love Assassin','Epic'],brute:['Heart Brute','Epic'],berserker:['Love Berserker','Epic'],lovebreaker:['Love Breaker','Epic'],witch:['Heart Witch','Legendary']};
  const meta=enemyMeta[type]||['Broken Heart','Common'];
- const spawned={id:'e_'+Math.random().toString(36).slice(2,10),x,y,hp,maxHp:hp,r,speed:spd,atk,hit:0,attack:Math.random()*.7,variant:Math.random(),type,boss,bossIndex, bossDef, specialCd:2+Math.random()*2,poison:0,name:meta[0],rarity:meta[1]};arena.enemies.push(spawned);return spawned;
+ const spawned={x,y,hp,maxHp:hp,r,speed:spd,atk,hit:0,attack:Math.random()*.7,variant:Math.random(),type,boss,bossIndex, bossDef, specialCd:2+Math.random()*2,poison:0,name:meta[0],rarity:meta[1]};arena.enemies.push(spawned);return spawned;
 }
 function burst(x,y,n=12,kind='hit'){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,sp=1+Math.random()*4;arena.particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:.45+Math.random()*.5,max:.9,size:2+Math.random()*4,kind})}}
 function fireArrow(e){const p=arena.player,dx=p.x-e.x,dy=p.y-e.y,d=Math.hypot(dx,dy)||1;arena.projectiles.push({x:e.x,y:e.y,vx:dx/d*5.2,vy:dy/d*5.2,life:2.2,damage:e.atk*.8,angle:Math.atan2(dy,dx),owner:'enemy'});burst(e.x,e.y,4,'slash');sfx('slash')}
@@ -852,44 +852,25 @@ function damageRemotePlayer(id,d){
 }
 function updateProjectiles(dt){
  for(const q of arena.projectiles){
-  if(q.stuck){q.stuckT-=dt;if(q.stuckT<=0)q.life=0;continue}
   q.x+=q.vx*60*dt;q.y+=q.vy*60*dt;q.life-=dt;
   if(q.owner==='enemy'&&q.life>0){
    let hit=false;const d=Math.hypot(q.x-arena.player.x,q.y-arena.player.y);
-   if(d<18){hurtPlayer(q.damage);q.life=0;burst(q.x,q.y,10,'hurt');hit=true}
-   if(!hit&&mp.host){for(const [id,p] of Object.entries(arena.remotePlayers||{})){if(p.down)continue;if(Math.hypot(q.x-p.x,q.y-p.y)<18){damageRemotePlayer(id,q.damage);q.life=0;burst(q.x,q.y,10,'hurt');break}}}
+   if(d<18){hurtPlayer(q.damage);q.life=0;hit=true}
+   if(!hit&&mp.host){for(const [id,p] of Object.entries(arena.remotePlayers||{})){if(p.down)continue;if(Math.hypot(q.x-p.x,q.y-p.y)<18){damageRemotePlayer(id,q.damage);q.life=0;break}}}
   }
   if((q.owner==='playerSkill'||q.owner==='remote')&&q.life>0&&!q.rain){
-   for(const e of [...arena.enemies]){
-    if(Math.hypot(q.x-e.x,q.y-e.y)<e.r+16){
-     damageEnemy(e,q.damage,q.owner==='remote'?q.remoteOwner:null);
-     burst(q.x,q.y,14,q.kind==='playerArrow'?'arrowHit':'slash');
-     sfx('hit');
-     // Keep arrows visibly embedded in the enemy briefly, like the solo combat feel.
-     if(q.kind==='playerArrow' || q.kind==='arrow'){
-      q.stuck=true;q.stuckT=.72;q.life=.72;q.targetEnemyId=e.id;q.vx=0;q.vy=0;q.x=e.x;q.y=e.y;q.angle=q.angle;
-     }else q.life=0;
-     break
-    }
-   }
+   for(const e of [...arena.enemies]){if(Math.hypot(q.x-e.x,q.y-e.y)<e.r+16){damageEnemy(e,q.damage,q.owner==='remote'?q.remoteOwner:null);q.life=0;burst(q.x,q.y,12,'slash');break}}
   }
  }
  arena.projectiles=arena.projectiles.filter(q=>q.life>0&&q.x>-80&&q.x<arena.w+80&&q.y>-80&&q.y<arena.h+80);
 }
-function drawProjectiles(){for(const q of arena.projectiles){ac.save();ac.translate(q.x,q.y);ac.rotate(q.angle);if(q.kind==='fire'){ac.shadowColor='#ff6b3d';ac.shadowBlur=18;ac.fillStyle='#ff7a3d';ac.beginPath();ac.arc(0,0,8,0,7);ac.fill();ac.fillStyle='#ffd36b';ac.beginPath();ac.arc(-2,0,4,0,7);ac.fill()}else if(q.kind==='playerArrow'||q.kind==='arrow'){
- ac.shadowColor=q.arrowType==='Fire Arrow'?'#ff6b3d':'#ff8fb1';ac.shadowBlur=q.stuck?14:8;
- ac.strokeStyle=q.owner==='remote'?'#ffd6e2':'#fff0f5';ac.lineWidth=3;ac.beginPath();ac.moveTo(-22,0);ac.lineTo(11,0);ac.stroke();
- ac.fillStyle=q.arrowType==='Fire Arrow'?'#ff8b4a':'#ffd1df';ac.beginPath();ac.moveTo(15,0);ac.lineTo(4,-7);ac.lineTo(4,7);ac.closePath();ac.fill();
- ac.strokeStyle='#d9b4c5';ac.lineWidth=2;ac.beginPath();ac.moveTo(-17,-5);ac.lineTo(-22,-10);ac.moveTo(-17,5);ac.lineTo(-22,10);ac.stroke();
- if(q.stuck){ac.fillStyle='#fff';ac.globalAlpha=.8;ac.beginPath();ac.arc(-20,0,3,0,7);ac.fill()}
- }else{ac.strokeStyle='#f5d7df';ac.lineWidth=3;ac.beginPath();ac.moveTo(-15,0);ac.lineTo(10,0);ac.stroke();ac.fillStyle='#ff8eaa';ac.beginPath();ac.moveTo(12,0);ac.lineTo(4,-5);ac.lineTo(4,5);ac.closePath();ac.fill();ac.fillStyle='#fff';ac.beginPath();ac.arc(-12,0,3,0,7);ac.fill()}ac.restore()}}
-
+function drawProjectiles(){for(const q of arena.projectiles){ac.save();ac.translate(q.x,q.y);ac.rotate(q.angle);if(q.kind==='fire'){ac.shadowColor='#ff6b3d';ac.shadowBlur=18;ac.fillStyle='#ff7a3d';ac.beginPath();ac.arc(0,0,8,0,7);ac.fill();ac.fillStyle='#ffd36b';ac.beginPath();ac.arc(-2,0,4,0,7);ac.fill()}else if(q.kind==='playerArrow'||q.kind==='arrow'){ac.strokeStyle=q.owner==='playerSkill'?'#fff0f5':'#d8b7c8';ac.lineWidth=3;ac.beginPath();ac.moveTo(-18,0);ac.lineTo(10,0);ac.stroke();ac.fillStyle='#ffd1df';ac.beginPath();ac.moveTo(13,0);ac.lineTo(3,-6);ac.lineTo(3,6);ac.closePath();ac.fill()}else{ac.strokeStyle='#f5d7df';ac.lineWidth=3;ac.beginPath();ac.moveTo(-15,0);ac.lineTo(10,0);ac.stroke();ac.fillStyle='#ff8eaa';ac.beginPath();ac.moveTo(12,0);ac.lineTo(4,-5);ac.lineTo(4,5);ac.closePath();ac.fill();ac.fillStyle='#fff';ac.beginPath();ac.arc(-12,0,3,0,7);ac.fill()}ac.restore()}}
 function damageEnemy(e,dmg,creditId=null){
  if(e.shieldT>0)dmg*=.35;e.hp-=dmg;e.hit=.12;arena.shake=4;burst(e.x,e.y,8,'heart');sfx('hit');
  if(e.hp<=0){
   let reward=(e.boss?80+arena.wave*8:3+Math.floor(arena.wave*.9));if(hasPassive('fortune'))reward=Math.ceil(reward*1.15);
   const xp=(e.boss?180:25)+arena.wave*6;
-  if(mp.connected&&mp.host){const killerId=creditId||mp.id;mpSend('reward',{target:killerId,gold:reward,xp});}
+  if(creditId&&mp.host)mpSend('reward',{target:creditId,gold:reward,xp});
   else{addArenaMoney(reward);gainXp(xp);if(hasPassive('vamp'))arena.player.hp=Math.min(combatStats().maxHp,arena.player.hp+combatStats().maxHp*.04)}
   arena.kills++;burst(e.x,e.y,e.boss?35:18,'death');
   if(e.type==='splitter'&&!e.boss&&arena.enemies.length<15){for(let i=0;i<2;i++)arena.enemies.push({x:e.x+(i?14:-14),y:e.y,hp:e.maxHp*.22,maxHp:e.maxHp*.22,r:13,speed:e.speed*1.5,atk:e.atk*.55,hit:0,attack:.3,variant:Math.random(),type:'broken',boss:false,bossIndex:-1,bossDef:null,specialCd:2,poison:0,name:'Broken Heart',rarity:'Common'})}
@@ -1087,7 +1068,7 @@ $('lsaSkillUse').onclick=useSkill;arenaCanvas.addEventListener('touchstart',e=>{
    - guests send input/attack/revive intents
    - every player keeps the same permanent arenaState progression locally
    ============================================================ */
-const MP_URL=(location.protocol==='file:'?'ws://localhost:8787/ws':((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws'));
+const MP_URL=(location.protocol==='file:'?'ws://localhost:8787':((location.protocol==='https:'?'wss://':'ws://')+location.host));
 const mp={ws:null,id:null,room:null,host:false,connected:false,players:{},remoteInputs:{},lastInput:0,lastSnap:0,attackNonce:0};
 arena.remotePlayers=arena.remotePlayers||{};
 arena.down=false;
@@ -1116,7 +1097,7 @@ function mpHandle(m){
  if(m.type==='input'&&mp.host){mp.remoteInputs[m.id]=m;if(arena.remotePlayers[m.id])Object.assign(arena.remotePlayers[m.id],m.player||{});return}
  if(m.type==='attack'&&mp.host){mpRemoteAttack(m.id,m.angle,m.weapon);return}
  if(m.type==='revive'){mpReviveLocal(m.target);return}
- if(m.type==='reward'&&m.target===mp.id){addArenaMoney(Number(m.gold||0));gainXp(Number(m.xp||0));mpLog('Reward: +'+Number(m.gold||0)+' 💗 / +'+Number(m.xp||0)+' XP ('+Math.round(Number(m.factor||1)*100)+'%)');return}
+ if(m.type==='reward'&&m.target===mp.id){addArenaMoney(Number(m.gold||0));gainXp(Number(m.xp||0));return}
  if(m.type==='snapshot'&&!mp.host){applyMpSnapshot(m);return}
  if(m.type==='host_changed'){mp.host=m.host===mp.id;mpSetStatus(mp.host?'HOST':'ONLINE',true);mpLog(mp.host?'You are now the host.':'Host changed.');}
 }
@@ -1143,7 +1124,7 @@ function mpBroadcastSnapshot(){
  for(const [id,r] of Object.entries(arena.remotePlayers||{}))compactPlayers[id]={...r,down:!!r.down};
  mpSend('snapshot',{wave:arena.wave,spawned:arena.spawned,targetCount:Math.max(10,8+arena.wave*3),players:compactPlayers,
    enemies:arena.enemies.map(e=>({id:e.id,x:e.x,y:e.y,hp:e.hp,maxHp:e.maxHp,r:e.r,name:e.name,type:e.type,rarity:e.rarity,boss:!!e.boss,bossDef:e.bossDef,specialCd:e.specialCd,shieldT:e.shieldT||0,poison:e.poison||0})),
-   projectiles:arena.projectiles.map(q=>({x:q.x,y:q.y,vx:q.vx,vy:q.vy,life:q.life,damage:q.damage,angle:q.angle,owner:q.owner,remoteOwner:q.remoteOwner,kind:q.kind,arrowType:q.arrowType,poison:q.poison,stuck:!!q.stuck,stuckT:q.stuckT||0,targetEnemyId:q.targetEnemyId}))});
+   projectiles:arena.projectiles.map(q=>({x:q.x,y:q.y,vx:q.vx,vy:q.vy,life:q.life,damage:q.damage,angle:q.angle,owner:q.owner,kind:q.kind,poison:q.poison}))});
 }
 function applyMpSnapshot(m){
  arena.wave=m.wave||arena.wave;arena.spawned=m.spawned||arena.spawned;
@@ -1167,7 +1148,7 @@ function mpRemoteAttack(id,angle,weapon){
  const p=r;
  const a=Number(angle)||0;
  if(weapon==='bow'){
-   arena.projectiles.push({x:p.x,y:p.y,vx:Math.cos(a)*7.2,vy:Math.sin(a)*7.2,life:2.4,damage:s.atk*1.15,angle:a,owner:'remote',remoteOwner:id,kind:'playerArrow',arrowType:r.arrowType||'Basic Arrow'});
+   arena.projectiles.push({x:p.x,y:p.y,vx:Math.cos(a)*7.2,vy:Math.sin(a)*7.2,life:2.4,damage:s.atk*1.15,angle:a,owner:'remote',remoteOwner:id,kind:'playerArrow'});
    return;
  }
  for(const e of [...arena.enemies]){
@@ -1242,18 +1223,10 @@ updateArena=function(dt){
  if(mp.connected&&mp.host){
   for(const [id,r] of Object.entries(arena.remotePlayers||{})){
     if(r.down)continue;
-    r.contactCd=r.contactCd||{};
-    for(const e of arena.enemies){
-      const contact=e.boss?72:46;
-      if(Math.hypot(e.x-r.x,e.y-r.y)<contact){
-        const cd=r.contactCd[e.id]||0;
-        if(cd<=0){damageRemotePlayer(id,Math.max(1,e.atk));r.contactCd[e.id]=.45;burst(r.x,r.y,10,'hurt');sfx('hurt')}
-      }
-    }
-    for(const k of Object.keys(r.contactCd)){r.contactCd[k]-=dt;if(r.contactCd[k]<=0)delete r.contactCd[k]}
+    for(const e of arena.enemies){const contact=e.boss?72:46;if(Math.hypot(e.x-r.x,e.y-r.y)<contact){damageRemotePlayer(id,Math.max(1,e.atk*.6*dt*8));break}}
   }
   mpBroadcastSnapshot();
- }
+}
 };
 </script>
 </body>
