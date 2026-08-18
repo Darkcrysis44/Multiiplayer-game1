@@ -1,10 +1,13 @@
-# Love Sword Arena - Multiplayer Skills Synced
+# Love Sword Arena - Multiplayer
 
-This build keeps the full previous game and adds server-authoritative multiplayer skill synchronization.
+Cloudflare Worker + Durable Object multiplayer build based on the original Love Sword Arena project.
 
-- R skill use is sent to the Cloudflare Durable Object.
-- Server validates skill/cooldown and applies damage.
-- Nova, Rose Barrage, Moon Slash, Heartstorm and Love Dash are synchronized.
-- Moon Slash projectile is authoritative and damages on collision.
-- Skill effects are broadcast to all players.
-- Existing revive, restart, upgrade, sword and bow systems are preserved.
+## Deploy
+
+From this folder:
+
+```bash
+npx wrangler deploy
+```
+
+The Worker entrypoint is `worker.js`, static assets are in `public/`, and the Durable Object binding is `ROOM`.
