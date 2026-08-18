@@ -18,7 +18,7 @@ function id(){return crypto.randomBytes(4).toString('hex')}
 function roomState(code){if(!rooms.has(code))rooms.set(code,{players:new Map(),host:null,lastSnapshot:null});return rooms.get(code)}
 function send(ws,msg){if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(msg))}
 function broadcast(room,msg,except=null){for(const p of room.players.values())if(p.ws!==except)send(p.ws,msg)}
-function playerList(room){return [...room.players.values()].map(p=>({id:p.id,name:p.player?.name||'Hunter',level:p.player?.level||1,rebirths:p.player?.rebirths||0,hp:p.player?.hp??100,maxHp:p.player?.maxHp??100,down:!!p.player?.down,x:p.player?.x||0,y:p.player?.y||0,weapon:p.player?.weapon||'sword'}))}
+function playerList(room){return [...room.players.values()].map(p=>({id:p.id,name:p.player?.name||'Hunter',level:p.player?.level||1,rebirths:p.player?.rebirths||0,hp:p.player?.hp??100,maxHp:p.player?.maxHp??100,down:!!p.player?.down,x:p.player?.x||0,y:p.player?.y||0,weapon:p.player?.weapon||'sword',arrowType:p.player?.arrowType||'Basic Arrow'}))}
 
 const server=http.createServer((req,res)=>{
  let u=new URL(req.url,'http://localhost');
